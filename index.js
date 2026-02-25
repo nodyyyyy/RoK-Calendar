@@ -4,7 +4,9 @@ const {
   EmbedBuilder, 
   REST, 
   Routes, 
-  SlashCommandBuilder 
+  SlashCommandBuilder,
+  ActionRowBuilder,
+  StringSelectMenuBuilder
 } = require('discord.js');
 const axios = require('axios');
 
@@ -43,35 +45,81 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 })();
 
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
 
-  if (interaction.commandName === 'events') {
+  // When slash command is used
+  if (interaction.isChatInputCommand()) {
 
-    await interaction.deferReply();
+    if (interaction.commandName === 'events') {
 
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events?key=${API_KEY}&timeMin=${new Date().toISOString()}&singleEvents=true&orderBy=startTime`;
+      const row = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('week_select')
+          .setPlaceholder('Select which week to display')
+          .addOptions([
+            {
+              label: 'Current Week',
+              value: 'current',
+            },
+            {
+              label: 'Next Week',
+              value: 'next',
+            }
+          ])
+      );
 
-    try {
-      const response = await axios.get(url);
-      const events = response.data.items.slice(0, 5);
+      return interaction.reply({
+        content: 'Choose which week you want to view:',
+        components: [row],
+        ephemeral: true
+      });
+    }
+  }
 
-      if (!events || events.length === 0) {
-        return interaction.editReply("There are no upcoming events.");
+  // When user selects option
+  if (interaction.isStringSelectMenu()) {
+
+    if (interaction.customId === 'week_select') {
+
+      await interaction.deferUpdate();
+
+      const selected = interaction.values[0];
+
+      const now = new Date();
+      const currentDay = now.getUTCDay();
+      const startOfWeek = new Date(now);
+      startOfWeek.setUTCDate(now.getUTCDate() - currentDay);
+      startOfWeek.setUTCHours(0,0,0,0);
+
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 7);
+
+      let filterStart = startOfWeek;
+      let filterEnd = endOfWeek;
+
+      if (selected === 'next') {
+        filterStart = new Date(endOfWeek);
+        filterEnd = new Date(filterStart);
+        filterEnd.setUTCDate(filterStart.getUTCDate() + 7);
       }
 
-      const embed = new EmbedBuilder()
-        .setColor("#7B2CBF")
-        .setTitle("📅 Upcoming Events")
-        .setFooter({ text: "Kingdom 3558 • Dates shown in UTC" })
-        .setTimestamp();
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events?key=${API_KEY}&timeMin=${filterStart.toISOString()}&timeMax=${filterEnd.toISOString()}&singleEvents=true&orderBy=startTime`;
 
-      events.forEach(event => {
+      try {
+        const response = await axios.get(url);
+        const events = response.data.items;
 
-        const startRaw = event.start.dateTime || event.start.date;
-        const endRaw = event.end?.dateTime || event.end?.date;
+        if (!events || events.length === 0) {
+          return interaction.editReply({
+            content: "No events found for that week.",
+            components: []
+          });
+        }
 
-        const start = new Date(startRaw);
-        const end = endRaw ? new Date(endRaw) : start;
+        const embed = new EmbedBuilder()
+          .setColor("#7B2CBF")
+          .setTitle(`📅 ${selected === 'current' ? 'Current Week' : 'Next Week'} Events`)
+          .setFooter({ text: "Kingdom 3558 • Dates shown in UTC" })
+          .setTimestamp();
 
         const dateFormatter = new Intl.DateTimeFormat("en-US", {
           month: "long",
@@ -79,30 +127,46 @@ client.on('interactionCreate', async interaction => {
           timeZone: "UTC",
         });
 
-        const startDate = dateFormatter.format(start);
-        const endDate = dateFormatter.format(end);
+        events.forEach(event => {
 
-        const durationMs = end - start;
-        const durationDays = Math.max(
-          1,
-          Math.ceil(durationMs / (1000 * 60 * 60 * 24))
-        );
+          const startRaw = event.start.dateTime || event.start.date;
+          const endRaw = event.end?.dateTime || event.end?.date;
 
-        embed.addFields({
-          name: `🟣 ${event.summary}`,
-          value:
+          const start = new Date(startRaw);
+          const end = endRaw ? new Date(endRaw) : start;
+
+          const startDate = dateFormatter.format(start);
+          const endDate = dateFormatter.format(end);
+
+          const durationMs = end - start;
+          const durationDays = Math.max(
+            1,
+            Math.ceil(durationMs / (1000 * 60 * 60 * 24))
+          );
+
+          embed.addFields({
+            name: `🟣 ${event.summary}`,
+            value:
 `📆 ${startDate} → ${endDate}
 ⏳ ${durationDays} Day${durationDays > 1 ? "s" : ""}`,
-          inline: false,
+            inline: false,
+          });
+
         });
 
-      });
+        interaction.editReply({
+          content: '',
+          embeds: [embed],
+          components: []
+        });
 
-      interaction.editReply({ embeds: [embed] });
-
-    } catch (error) {
-      console.error(error.response?.data || error.message);
-      interaction.editReply("Error fetching calendar events.");
+      } catch (error) {
+        console.error(error.response?.data || error.message);
+        interaction.editReply({
+          content: "Error fetching events.",
+          components: []
+        });
+      }
     }
   }
 });
