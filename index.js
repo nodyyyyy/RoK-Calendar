@@ -73,19 +73,11 @@ client.on('interactionCreate', async interaction => {
         const start = new Date(startRaw);
         const end = endRaw ? new Date(endRaw) : start;
 
-        const weekdayFormatter = new Intl.DateTimeFormat("en-US", {
-          weekday: "long",
-          timeZone: "UTC",
-        });
-
         const dateFormatter = new Intl.DateTimeFormat("en-US", {
           month: "long",
           day: "numeric",
           timeZone: "UTC",
         });
-
-        const startWeekday = weekdayFormatter.format(start);
-        const endWeekday = weekdayFormatter.format(end);
 
         const startDate = dateFormatter.format(start);
         const endDate = dateFormatter.format(end);
@@ -99,7 +91,7 @@ client.on('interactionCreate', async interaction => {
         embed.addFields({
           name: `🟣 ${event.summary}`,
           value:
-`📆 ${startWeekday}, ${startDate} → ${endWeekday}, ${endDate}
+`📆 ${startDate} → ${endDate}
 ⏳ ${durationDays} Day${durationDays > 1 ? "s" : ""}`,
           inline: false,
         });
