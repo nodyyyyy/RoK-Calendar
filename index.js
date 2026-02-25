@@ -62,7 +62,7 @@ client.on('interactionCreate', async interaction => {
       const embed = new EmbedBuilder()
         .setColor("#7B2CBF")
         .setTitle("📅 Upcoming Events")
-        .setFooter({ text: "Kingdom 3558 • Times shown in UTC" })
+        .setFooter({ text: "Kingdom 3558 • Dates shown in UTC" })
         .setTimestamp();
 
       events.forEach(event => {
@@ -78,8 +78,17 @@ client.on('interactionCreate', async interaction => {
           timeZone: "UTC",
         });
 
+        const dateFormatter = new Intl.DateTimeFormat("en-US", {
+          month: "long",
+          day: "numeric",
+          timeZone: "UTC",
+        });
+
         const startWeekday = weekdayFormatter.format(start);
         const endWeekday = weekdayFormatter.format(end);
+
+        const startDate = dateFormatter.format(start);
+        const endDate = dateFormatter.format(end);
 
         const durationMs = end - start;
         const durationDays = Math.max(
@@ -87,23 +96,11 @@ client.on('interactionCreate', async interaction => {
           Math.ceil(durationMs / (1000 * 60 * 60 * 24))
         );
 
-        const timeFormatter = new Intl.DateTimeFormat("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-          timeZone: "UTC",
-        });
-
-        const startTime = event.start.dateTime
-          ? timeFormatter.format(start)
-          : "All Day";
-
         embed.addFields({
           name: `🟣 ${event.summary}`,
           value:
-`📆 ${startWeekday} → ${endWeekday}
-⏳ ${durationDays} Day${durationDays > 1 ? "s" : ""}
-🕒 Starts: ${startTime} UTC`,
+`📆 ${startWeekday}, ${startDate} → ${endWeekday}, ${endDate}
+⏳ ${durationDays} Day${durationDays > 1 ? "s" : ""}`,
           inline: false,
         });
 
