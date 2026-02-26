@@ -168,16 +168,14 @@ client.on('interactionCreate', async interaction => {
       const response = await axios.get(url);
       const events = response.data.items;
 
-      if (!events.length) {
-        return interaction.editReply({
-          content: "No events found.",
-          components: []
-        });
-      }
+      const titleText =
+        selected === "current"
+          ? "📅 Current Week Events"
+          : "📅 Next Week Events";
 
       const embed = new EmbedBuilder()
         .setColor("#7B2CBF")
-        .setTitle("📅 Upcoming Events")
+        .setTitle(titleText)
         .setFooter({ text: "Kingdom 3558 • UTC" })
         .setTimestamp();
 
@@ -203,10 +201,8 @@ client.on('interactionCreate', async interaction => {
           end.getUTCDate()
         ));
 
-        // Skip events already ended
-        if (endUTC < todayUTC) {
-          return;
-        }
+        // Skip past events
+        if (endUTC < todayUTC) return;
 
         const dateFormatter = new Intl.DateTimeFormat("en-US", {
           month: "long",
