@@ -67,10 +67,7 @@ function getEventEmoji(eventName) {
   if (name.includes("armament"))
     return "<:ArmamentRevealThyself:1476403752880570449>";
 
-  if (name.includes("aoo registration"))
-    return "<:AOORegistration:1476403633657479319>";
-
-  if (name.includes("ark"))
+  if (name.includes("aoo registration") || name.includes("ark"))
     return "<:AOORegistration:1476403633657479319>";
 
   if (name.includes("egg") || name.includes("hammer"))
@@ -107,8 +104,6 @@ function getEventEmoji(eventName) {
 
 client.on('interactionCreate', async interaction => {
 
-  /* ----- Slash Command ----- */
-
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'events') {
 
@@ -129,8 +124,6 @@ client.on('interactionCreate', async interaction => {
       });
     }
   }
-
-  /* ----- Select Menu ----- */
 
   if (interaction.isStringSelectMenu()) {
 
@@ -187,12 +180,18 @@ client.on('interactionCreate', async interaction => {
 
       events.forEach(event => {
 
-        const start = new Date(event.start.dateTime || event.start.date);
-        const end = new Date(event.end.dateTime || event.end.date);
+        let start = new Date(event.start.dateTime || event.start.date);
+        let end = new Date(event.end.dateTime || event.end.date);
+
+        // ✅ FIX GOOGLE ALL-DAY EXCLUSIVE END DATE
+        if (event.start.date && event.end.date) {
+          end.setUTCDate(end.getUTCDate() - 1);
+        }
 
         const startDate = dateFormatter.format(start);
         const endDate = dateFormatter.format(end);
 
+        // Normalize to UTC midnight
         const startUTC = new Date(Date.UTC(
           start.getUTCFullYear(),
           start.getUTCMonth(),
@@ -205,15 +204,23 @@ client.on('interactionCreate', async interaction => {
           end.getUTCDate()
         ));
 
-// Google all-day events end on the NEXT day at 00:00
+        // ✅ Correct duration
         let durationDays = Math.round(
           (endUTC - startUTC) / (1000 * 60 * 60 * 24)
-        );
+        ) + 1;
 
-// Safety fallback
         if (durationDays <= 0) durationDays = 1;
 
-        const diffDays = Math.ceil((start - nowUTC) / (1000 * 60 * 60 * 24));
+        // ✅ Correct relative days
+        const todayUTC = new Date(Date.UTC(
+          nowUTC.getUTCFullYear(),
+          nowUTC.getUTCMonth(),
+          nowUTC.getUTCDate()
+        ));
+
+        const diffDays = Math.round(
+          (startUTC - todayUTC) / (1000 * 60 * 60 * 24)
+        );
 
         let relativeText = "";
         if (diffDays > 0) {
