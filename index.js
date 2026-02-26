@@ -21,13 +21,15 @@ const client = new Client({
 });
 
 client.once('ready', () => {
-  console.log(`Bot is online as ${client.user.tag}`);
+  console.log(`Bot online as ${client.user.tag}`);
 });
+
+/* ---------------- SLASH COMMAND ---------------- */
 
 const commands = [
   new SlashCommandBuilder()
     .setName('events')
-    .setDescription('Shows upcoming kingdom events')
+    .setDescription('Shows kingdom events')
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -44,129 +46,196 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
   }
 })();
 
+/* ---------------- EMOJI KEYWORD DETECTION ---------------- */
+
+function getEventEmoji(eventName) {
+
+  const name = eventName.toLowerCase();
+
+  if (name.includes("wheel"))
+    return "<:WheelOfFortune:1476403078696534026>";
+
+  if (name.includes("gems"))
+    return "<:MorethanGems:1476403357387198677>";
+
+  if (name.includes("olympia"))
+    return "<:ChampionsofOlympia:1476403668172537928>";
+
+  if (name.includes("ceroli"))
+    return "<:CeroliCrisis:1476402719496474636>";
+
+  if (name.includes("armament"))
+    return "<:ArmamentRevealThyself:1476403752880570449>";
+
+  if (name.includes("aoo registration"))
+    return "<:AOORegistration:1476403633657479319>";
+
+  if (name.includes("ark"))
+    return "<:AOORegistration:1476403633657479319>";
+
+  if (name.includes("egg") || name.includes("hammer"))
+    return "<:EggHammerEvent:1476405511460229162>";
+
+  if (name.includes("governor"))
+    return "<:TheMightiestGovernor:1476403439356481596>";
+
+  if (name.includes("strategic"))
+    return "<:StrategicReserves:1476403214852161596>";
+
+  if (name.includes("silk"))
+    return "<:SilkRoad:1476402527548342453>";
+
+  if (name.includes("karuak"))
+    return "<:KaruakCeremony:1476402847615549645>";
+
+  if (name.includes("holy"))
+    return "<:HolyKnightsTreasureEggEvent:1476403313368105081>";
+
+  if (name.includes("shadow"))
+    return "<:ShadowLegion:1476402579339612293>";
+
+  if (name.includes("ian"))
+    return "<:IansBallads:1476403492049522760>";
+
+  if (name.includes("mobilization"))
+    return "<:AllianceMobilization:1476402816263389326>";
+
+  return "🟣";
+}
+
+/* ---------------- INTERACTIONS ---------------- */
+
 client.on('interactionCreate', async interaction => {
 
-  // When slash command is used
-  if (interaction.isChatInputCommand()) {
+  /* ----- Slash Command ----- */
 
+  if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'events') {
 
       const row = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId('week_select')
-          .setPlaceholder('Select which week to display')
+          .setPlaceholder('Select week')
           .addOptions([
-            {
-              label: 'Current Week',
-              value: 'current',
-            },
-            {
-              label: 'Next Week',
-              value: 'next',
-            }
+            { label: 'Current Week', value: 'current' },
+            { label: 'Next Week', value: 'next' }
           ])
       );
 
       return interaction.reply({
-        content: 'Choose which week you want to view:',
+        content: 'Select which week to display:',
         components: [row],
         ephemeral: true
       });
     }
   }
 
-  // When user selects option
+  /* ----- Select Menu ----- */
+
   if (interaction.isStringSelectMenu()) {
 
-    if (interaction.customId === 'week_select') {
+    await interaction.deferUpdate();
 
-      await interaction.deferUpdate();
+    const selected = interaction.values[0];
 
-      const selected = interaction.values[0];
+    const now = new Date();
+    const currentDay = now.getUTCDay();
 
-      const now = new Date();
-      const currentDay = now.getUTCDay();
-      const startOfWeek = new Date(now);
-      startOfWeek.setUTCDate(now.getUTCDate() - currentDay);
-      startOfWeek.setUTCHours(0,0,0,0);
+    const startOfWeek = new Date(now);
+    startOfWeek.setUTCDate(now.getUTCDate() - currentDay);
+    startOfWeek.setUTCHours(0,0,0,0);
 
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 7);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 7);
 
-      let filterStart = startOfWeek;
-      let filterEnd = endOfWeek;
+    let filterStart = startOfWeek;
+    let filterEnd = endOfWeek;
 
-      if (selected === 'next') {
-        filterStart = new Date(endOfWeek);
-        filterEnd = new Date(filterStart);
-        filterEnd.setUTCDate(filterStart.getUTCDate() + 7);
+    if (selected === 'next') {
+      filterStart = new Date(endOfWeek);
+      filterEnd = new Date(filterStart);
+      filterEnd.setUTCDate(filterStart.getUTCDate() + 7);
+    }
+
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events?key=${API_KEY}&timeMin=${filterStart.toISOString()}&timeMax=${filterEnd.toISOString()}&singleEvents=true&orderBy=startTime`;
+
+    try {
+
+      const response = await axios.get(url);
+      const events = response.data.items;
+
+      if (!events.length) {
+        return interaction.editReply({
+          content: "No events found.",
+          components: []
+        });
       }
 
-      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events?key=${API_KEY}&timeMin=${filterStart.toISOString()}&timeMax=${filterEnd.toISOString()}&singleEvents=true&orderBy=startTime`;
+      const embed = new EmbedBuilder()
+        .setColor("#7B2CBF")
+        .setTitle("📅 Upcoming Events")
+        .setFooter({ text: "Kingdom 3558 • UTC" })
+        .setTimestamp();
 
-      try {
-        const response = await axios.get(url);
-        const events = response.data.items;
+      const dateFormatter = new Intl.DateTimeFormat("en-US", {
+        month: "long",
+        day: "numeric",
+        timeZone: "UTC",
+      });
 
-        if (!events || events.length === 0) {
-          return interaction.editReply({
-            content: "No events found for that week.",
-            components: []
-          });
+      const nowUTC = new Date();
+
+      events.forEach(event => {
+
+        const start = new Date(event.start.dateTime || event.start.date);
+        const end = new Date(event.end.dateTime || event.end.date);
+
+        const startDate = dateFormatter.format(start);
+        const endDate = dateFormatter.format(end);
+
+        const durationDays = Math.max(
+          1,
+          Math.ceil((end - start) / (1000 * 60 * 60 * 24))
+        );
+
+        const diffDays = Math.ceil((start - nowUTC) / (1000 * 60 * 60 * 24));
+
+        let relativeText = "";
+        if (diffDays > 0) {
+          relativeText = `Arrives in ${diffDays} day${diffDays > 1 ? "s" : ""}`;
+        } else if (diffDays === 0) {
+          relativeText = "Starts today";
+        } else {
+          relativeText = "Already started";
         }
 
-        const embed = new EmbedBuilder()
-          .setColor("#7B2CBF")
-          .setTitle(`📅 ${selected === 'current' ? 'Current Week' : 'Next Week'} Events`)
-          .setFooter({ text: "Kingdom 3558 • Dates shown in UTC" })
-          .setTimestamp();
+        const emoji = getEventEmoji(event.summary);
 
-        const dateFormatter = new Intl.DateTimeFormat("en-US", {
-          month: "long",
-          day: "numeric",
-          timeZone: "UTC",
+        embed.addFields({
+          name: `${emoji} ${event.summary}`,
+          value:
+`➤ ${relativeText}
+📆 ${startDate} → ${endDate}
+⏳ Event Duration: ${durationDays} day${durationDays > 1 ? "s" : ""}
+
+━━━━━━━━━━━━━━━━━━`,
+          inline: false
         });
 
-        events.forEach(event => {
+      });
 
-          const startRaw = event.start.dateTime || event.start.date;
-          const endRaw = event.end?.dateTime || event.end?.date;
+      interaction.editReply({
+        content: '',
+        embeds: [embed],
+        components: []
+      });
 
-          const start = new Date(startRaw);
-          const end = endRaw ? new Date(endRaw) : start;
-
-          const startDate = dateFormatter.format(start);
-          const endDate = dateFormatter.format(end);
-
-          const durationMs = end - start;
-          const durationDays = Math.max(
-            1,
-            Math.ceil(durationMs / (1000 * 60 * 60 * 24))
-          );
-
-          embed.addFields({
-            name: `🟣 ${event.summary}`,
-            value:
-`📆 ${startDate} → ${endDate}
-⏳ ${durationDays} Day${durationDays > 1 ? "s" : ""}`,
-            inline: false,
-          });
-
-        });
-
-        interaction.editReply({
-          content: '',
-          embeds: [embed],
-          components: []
-        });
-
-      } catch (error) {
-        console.error(error.response?.data || error.message);
-        interaction.editReply({
-          content: "Error fetching events.",
-          components: []
-        });
-      }
+    } catch (error) {
+      console.error(error.response?.data || error.message);
+      interaction.editReply({
+        content: "Error fetching events.",
+        components: []
+      });
     }
   }
 });
