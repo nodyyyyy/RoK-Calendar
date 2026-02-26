@@ -104,6 +104,8 @@ function getEventEmoji(eventName) {
 
 client.on('interactionCreate', async interaction => {
 
+  /* ----- Slash Command ----- */
+
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'events') {
 
@@ -125,6 +127,8 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
+  /* ----- Select Menu ----- */
+
   if (interaction.isStringSelectMenu()) {
 
     await interaction.deferUpdate();
@@ -132,11 +136,18 @@ client.on('interactionCreate', async interaction => {
     const selected = interaction.values[0];
 
     const now = new Date();
-    const currentDay = now.getUTCDay();
+    const todayUTC = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate()
+    ));
 
-    const startOfWeek = new Date(now);
-    startOfWeek.setUTCDate(now.getUTCDate() - currentDay);
-    startOfWeek.setUTCHours(0,0,0,0);
+    // Monday-based week
+    const day = todayUTC.getUTCDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+
+    const startOfWeek = new Date(todayUTC);
+    startOfWeek.setUTCDate(todayUTC.getUTCDate() + diffToMonday);
 
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 7);
@@ -170,28 +181,16 @@ client.on('interactionCreate', async interaction => {
         .setFooter({ text: "Kingdom 3558 • UTC" })
         .setTimestamp();
 
-      const dateFormatter = new Intl.DateTimeFormat("en-US", {
-        month: "long",
-        day: "numeric",
-        timeZone: "UTC",
-      });
-
-      const nowUTC = new Date();
-
       events.forEach(event => {
 
         let start = new Date(event.start.dateTime || event.start.date);
         let end = new Date(event.end.dateTime || event.end.date);
 
-        // ✅ FIX GOOGLE ALL-DAY EXCLUSIVE END DATE
+        // Fix Google all-day exclusive end
         if (event.start.date && event.end.date) {
           end.setUTCDate(end.getUTCDate() - 1);
         }
 
-        const startDate = dateFormatter.format(start);
-        const endDate = dateFormatter.format(end);
-
-        // Normalize to UTC midnight
         const startUTC = new Date(Date.UTC(
           start.getUTCFullYear(),
           start.getUTCMonth(),
@@ -204,19 +203,25 @@ client.on('interactionCreate', async interaction => {
           end.getUTCDate()
         ));
 
-        // ✅ Correct duration
+        // Skip events already ended
+        if (endUTC < todayUTC) {
+          return;
+        }
+
+        const dateFormatter = new Intl.DateTimeFormat("en-US", {
+          month: "long",
+          day: "numeric",
+          timeZone: "UTC",
+        });
+
+        const startDate = dateFormatter.format(startUTC);
+        const endDate = dateFormatter.format(endUTC);
+
         let durationDays = Math.round(
           (endUTC - startUTC) / (1000 * 60 * 60 * 24)
         ) + 1;
 
         if (durationDays <= 0) durationDays = 1;
-
-        // ✅ Correct relative days
-        const todayUTC = new Date(Date.UTC(
-          nowUTC.getUTCFullYear(),
-          nowUTC.getUTCMonth(),
-          nowUTC.getUTCDate()
-        ));
 
         const diffDays = Math.round(
           (startUTC - todayUTC) / (1000 * 60 * 60 * 24)
