@@ -193,10 +193,25 @@ client.on('interactionCreate', async interaction => {
         const startDate = dateFormatter.format(start);
         const endDate = dateFormatter.format(end);
 
-        const durationDays = Math.max(
-          1,
-          Math.ceil((end - start) / (1000 * 60 * 60 * 24))
+        const startUTC = new Date(Date.UTC(
+          start.getUTCFullYear(),
+          start.getUTCMonth(),
+          start.getUTCDate()
+        ));
+
+        const endUTC = new Date(Date.UTC(
+          end.getUTCFullYear(),
+          end.getUTCMonth(),
+          end.getUTCDate()
+        ));
+
+// Google all-day events end on the NEXT day at 00:00
+        let durationDays = Math.round(
+          (endUTC - startUTC) / (1000 * 60 * 60 * 24)
         );
+
+// Safety fallback
+        if (durationDays <= 0) durationDays = 1;
 
         const diffDays = Math.ceil((start - nowUTC) / (1000 * 60 * 60 * 24));
 
