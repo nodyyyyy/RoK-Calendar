@@ -152,13 +152,13 @@ client.on('interactionCreate', async interaction => {
 
     const dateInput = new TextInputBuilder()
       .setCustomId('date1')
-      .setLabel('Date for D10 (DD-MM-YYYY)')
+      .setLabel('Registration start date (DD-MM-YYYY)')
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
 
     const timeInput = new TextInputBuilder()
       .setCustomId('time')
-      .setLabel('Time for D19 (HH:MM:SS)')
+      .setLabel('Fill in the fixed time for the passes to open (HH:MM:SS)')
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
 
