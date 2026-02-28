@@ -9,7 +9,7 @@ const {
   StringSelectMenuBuilder
 } = require('discord.js');
 const axios = require('axios');
-const { google } = require('googleapis');
+const { GoogleSpreadsheet } = require('google-spreadsheet');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -17,7 +17,7 @@ const GUILD_ID = process.env.GUILD_ID;
 const API_KEY = process.env.GOOGLE_API_KEY;
 const CALENDAR_ID = process.env.CALENDAR_ID;
 
-/* NEW ENV FOR SHEETS */
+/* NEW ENV */
 const GOOGLE_SERVICE_ACCOUNT = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
@@ -29,17 +29,6 @@ client.once('ready', () => {
   console.log(`Bot online as ${client.user.tag}`);
 });
 
-/* ---------------- GOOGLE SHEETS AUTH ---------------- */
-
-const auth = new google.auth.JWT(
-  GOOGLE_SERVICE_ACCOUNT.client_email,
-  null,
-  GOOGLE_SERVICE_ACCOUNT.private_key,
-  ['https://www.googleapis.com/auth/spreadsheets']
-);
-
-const sheets = google.sheets({ version: 'v4', auth });
-
 /* ---------------- SLASH COMMANDS ---------------- */
 
 const commands = [
@@ -47,7 +36,6 @@ const commands = [
     .setName('events')
     .setDescription('Shows kingdom events'),
 
-  /* NEW COMMAND */
   new SlashCommandBuilder()
     .setName('timeline')
     .setDescription('Updates timeline dates and returns calculated results')
@@ -79,57 +67,25 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
   }
 })();
 
-/* ---------------- EMOJI KEYWORD DETECTION ---------------- */
+/* ---------------- EMOJI FUNCTION ---------------- */
 
 function getEventEmoji(eventName) {
-
   const name = eventName.toLowerCase();
-
-  if (name.includes("wheel"))
-    return "<:WheelOfFortune:1476403078696534026>";
-
-  if (name.includes("gems"))
-    return "<:MorethanGems:1476403357387198677>";
-
-  if (name.includes("olympia"))
-    return "<:ChampionsofOlympia:1476403668172537928>";
-
-  if (name.includes("ceroli"))
-    return "<:CeroliCrisis:1476402719496474636>";
-
-  if (name.includes("armament"))
-    return "<:ArmamentRevealThyself:1476403752880570449>";
-
-  if (name.includes("aoo registration") || name.includes("ark"))
-    return "<:AOORegistration:1476403633657479319>";
-
-  if (name.includes("egg") || name.includes("hammer"))
-    return "<:EggHammerEvent:1476405511460229162>";
-
-  if (name.includes("governor"))
-    return "<:TheMightiestGovernor:1476403439356481596>";
-
-  if (name.includes("strategic"))
-    return "<:StrategicReserves:1476403214852161596>";
-
-  if (name.includes("silk"))
-    return "<:SilkRoad:1476402527548342453>";
-
-  if (name.includes("karuak"))
-    return "<:KaruakCeremony:1476402847615549645>";
-
-  if (name.includes("holy"))
-    return "<:HolyKnightsTreasureEggEvent:1476403313368105081>";
-
-  if (name.includes("shadow"))
-    return "<:ShadowLegion:1476402579339612293>";
-
-  if (name.includes("ian"))
-    return "<:IansBallads:1476403492049522760>";
-
-  if (name.includes("mobilization"))
-    return "<:AllianceMobilization:1476402816263389326>";
-
+  if (name.includes("wheel")) return "<:WheelOfFortune:1476403078696534026>";
+  if (name.includes("gems")) return "<:MorethanGems:1476403357387198677>";
+  if (name.includes("olympia")) return "<:ChampionsofOlympia:1476403668172537928>";
+  if (name.includes("ceroli")) return "<:CeroliCrisis:1476402719496474636>";
+  if (name.includes("armament")) return "<:ArmamentRevealThyself:1476403752880570449>";
+  if (name.includes("aoo registration") || name.includes("ark")) return "<:AOORegistration:1476403633657479319>";
+  if (name.includes("egg") || name.includes("hammer")) return "<:EggHammerEvent:1476405511460229162>";
+  if (name.includes("governor")) return "<:TheMightiestGovernor:1476403439356481596>";
+  if (name.includes("strategic")) return "<:StrategicReserves:1476403214852161596>";
+  if (name.includes("silk")) return "<:SilkRoad:1476402527548342453>";
+  if (name.includes("karuak")) return "<:KaruakCeremony:1476402847615549645>";
+  if (name.includes("holy")) return "<:HolyKnightsTreasureEggEvent:1476403313368105081>";
+  if (name.includes("shadow")) return "<:ShadowLegion:1476402579339612293>";
+  if (name.includes("ian")) return "<:IansBallads:1476403492049522760>";
+  if (name.includes("mobilization")) return "<:AllianceMobilization:1476402816263389326>";
   return "🟣";
 }
 
@@ -137,7 +93,7 @@ function getEventEmoji(eventName) {
 
 client.on('interactionCreate', async interaction => {
 
-  /* ---------------- TIMELINE COMMAND ---------------- */
+  /* ---------- TIMELINE ---------- */
 
   if (interaction.isChatInputCommand() && interaction.commandName === 'timeline') {
 
@@ -149,35 +105,21 @@ client.on('interactionCreate', async interaction => {
 
     try {
 
-      /* UPDATE CELLS */
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SPREADSHEET_ID,
-        range: 'Save the dates!D10',
-        valueInputOption: 'USER_ENTERED',
-        resource: { values: [[date1]] }
-      });
+      const doc = new GoogleSpreadsheet(SPREADSHEET_ID);
+      await doc.useServiceAccountAuth(GOOGLE_SERVICE_ACCOUNT);
+      await doc.loadInfo();
 
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SPREADSHEET_ID,
-        range: 'Save the dates!D14',
-        valueInputOption: 'USER_ENTERED',
-        resource: { values: [[date2]] }
-      });
+      const sheet = doc.sheetsByTitle['Save the dates'];
 
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SPREADSHEET_ID,
-        range: 'Save the dates!D19',
-        valueInputOption: 'USER_ENTERED',
-        resource: { values: [[time]] }
-      });
+      await sheet.loadCells('D10:D19');
 
-      /* READ RESULTS */
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: SPREADSHEET_ID,
-        range: 'Save the dates!B26:F34'
-      });
+      sheet.getCellByA1('D10').value = date1;
+      sheet.getCellByA1('D14').value = date2;
+      sheet.getCellByA1('D19').value = time;
 
-      const rows = response.data.values || [];
+      await sheet.saveUpdatedCells();
+
+      const rows = await sheet.getRows({ offset: 25, limit: 9 });
 
       const embed = new EmbedBuilder()
         .setColor("#7B2CBF")
@@ -186,18 +128,14 @@ client.on('interactionCreate', async interaction => {
         .setTimestamp();
 
       rows.forEach(row => {
-
-        const label = row[0];   // Column B
-        const dateValue = row[4]; // Column F
+        const label = row._rawData[1]; // Column B
+        const dateValue = row._rawData[5]; // Column F
 
         if (!label || !dateValue) return;
 
         embed.addFields({
           name: `🟣 ${label}`,
-          value:
-`📆 ${dateValue}
-
-━━━━━━━━━━━━━━━━━━`,
+          value: `📆 ${dateValue}\n\n━━━━━━━━━━━━━━━━━━`,
           inline: false
         });
       });
@@ -210,7 +148,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  /* ---------------- EVENTS COMMAND ---------------- */
+  /* ---------- EVENTS ---------- */
 
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'events') {
@@ -233,7 +171,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  /* ---------------- SELECT MENU ---------------- */
+  /* ---------- SELECT MENU ---------- */
 
   if (interaction.isStringSelectMenu()) {
 
