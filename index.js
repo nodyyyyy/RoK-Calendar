@@ -8,15 +8,16 @@ const {
   ActionRowBuilder,
   StringSelectMenuBuilder
 } = require('discord.js');
+
 const axios = require('axios');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
+const { GoogleAuth } = require('google-auth-library');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 const API_KEY = process.env.GOOGLE_API_KEY;
 const CALENDAR_ID = process.env.CALENDAR_ID;
-
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
 /* ---------------- SAFE GOOGLE SERVICE ACCOUNT ---------------- */
@@ -124,10 +125,15 @@ client.on('interactionCreate', async interaction => {
 
     try {
 
-      const doc = new GoogleSpreadsheet(SPREADSHEET_ID);
+      const auth = new GoogleAuth({
+        credentials: GOOGLE_SERVICE_ACCOUNT,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets']
+      });
 
-      // ✅ FIX FOR google-spreadsheet v4
-      await doc.loadInfo({ auth: GOOGLE_SERVICE_ACCOUNT });
+      const doc = new GoogleSpreadsheet(SPREADSHEET_ID);
+      doc.auth = auth;
+
+      await doc.loadInfo();
 
       const sheet = doc.sheetsByTitle['Save the dates'];
 
@@ -153,7 +159,7 @@ client.on('interactionCreate', async interaction => {
 
       rows.forEach(row => {
 
-        const label = row._rawData[1]; 
+        const label = row._rawData[1];
         const dateValue = row._rawData[5];
 
         if (!label || !dateValue) return;
@@ -195,7 +201,7 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({
         content: 'Select which week to display:',
         components: [row],
-        flags: 64 // ✅ FIXED ephemeral deprecation
+        flags: 64
       });
     }
   }
