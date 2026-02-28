@@ -34,7 +34,7 @@ const SPREADSHEETS = {
   },
   Tides: {
     id: "1RGWGVNzcP5Q9br9K95dpKbnMuVKdJ41KdYkhX407WbY",
-    startRow: 24,
+    startRow: 23,
     endRow: 30,
     labelCol: 1,
     dateCol: 3
