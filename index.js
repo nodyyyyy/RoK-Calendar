@@ -67,7 +67,7 @@ function getEventEmoji(eventName) {
   return "📅";
 }
 
-/* ---------------- GOOGLE SHEETS LOGIC (TIMELINE) ---------------- */
+/* ---------------- GOOGLE SHEETS LOGIC ---------------- */
 
 async function getTimelineFromSheets(interaction) {
     const creds = JSON.parse(process.env.GOOGLE_JSON_CREDS);
@@ -108,7 +108,7 @@ async function getTimelineFromSheets(interaction) {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  // --- NEW TIMELINE COMMAND ---
+  // --- TIMELINE COMMAND ---
   if (interaction.commandName === 'timeline') {
     await interaction.deferReply();
     try {
@@ -132,7 +132,7 @@ client.on('interactionCreate', async (interaction) => {
     }
   }
 
-  // --- ORIGINAL EVENTS COMMAND ---
+  // --- EVENTS COMMAND (ORIGINAL) ---
   if (interaction.commandName === 'events') {
     await interaction.deferReply();
     try {
@@ -161,9 +161,7 @@ client.on('interactionCreate', async (interaction) => {
         if (endUTC < todayUTC) return;
 
         const dateFormatter = new Intl.DateTimeFormat("en-US", {
-          month: "long",
-          day: "numeric",
-          timeZone: "UTC",
+          month: "long", day: "numeric", timeZone: "UTC",
         });
 
         const startDate = dateFormatter.format(startUTC);
