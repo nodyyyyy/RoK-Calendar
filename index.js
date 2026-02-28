@@ -41,7 +41,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds],
 });
 
-client.once('ready', () => {
+client.once('clientReady', () => {
   console.log(`✅ Bot online as ${client.user.tag}`);
 });
 
@@ -125,8 +125,9 @@ client.on('interactionCreate', async interaction => {
     try {
 
       const doc = new GoogleSpreadsheet(SPREADSHEET_ID);
-      await doc.useServiceAccountAuth(GOOGLE_SERVICE_ACCOUNT);
-      await doc.loadInfo();
+
+      // ✅ FIX FOR google-spreadsheet v4
+      await doc.loadInfo({ auth: GOOGLE_SERVICE_ACCOUNT });
 
       const sheet = doc.sheetsByTitle['Save the dates'];
 
@@ -152,8 +153,8 @@ client.on('interactionCreate', async interaction => {
 
       rows.forEach(row => {
 
-        const label = row._rawData[1]; // Column B
-        const dateValue = row._rawData[5]; // Column F
+        const label = row._rawData[1]; 
+        const dateValue = row._rawData[5];
 
         if (!label || !dateValue) return;
 
@@ -194,7 +195,7 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({
         content: 'Select which week to display:',
         components: [row],
-        ephemeral: true
+        flags: 64 // ✅ FIXED ephemeral deprecation
       });
     }
   }
