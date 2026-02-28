@@ -29,8 +29,8 @@ const SPREADSHEETS = {
     id: "1ETPuRl5QPvjAwx4wLPgMHUxoeveauXECW_v7gVRSW84",
     startRow: 25,
     endRow: 33,
-    labelCol: 1, // B
-    dateCol: 3   // D
+    labelCol: 1,
+    dateCol: 3
   },
   Tides: {
     id: "1RGWGVNzcP5Q9br9K95dpKbnMuVKdJ41KdYkhX407WbY",
@@ -119,7 +119,7 @@ function getEventEmoji(eventName) {
 
 client.on('interactionCreate', async interaction => {
 
-  /* -------- TIMELINE COMMAND -------- */
+  /* -------- TIMELINE -------- */
 
   if (interaction.isChatInputCommand() && interaction.commandName === 'timeline') {
 
@@ -140,8 +140,6 @@ client.on('interactionCreate', async interaction => {
     });
   }
 
-  /* -------- TIMELINE SELECT -------- */
-
   if (interaction.isStringSelectMenu() && interaction.customId === 'timeline_sheet_select') {
 
     const selectedSheet = interaction.values[0];
@@ -152,13 +150,15 @@ client.on('interactionCreate', async interaction => {
 
     const dateInput = new TextInputBuilder()
       .setCustomId('date1')
-      .setLabel('Registration start date (DD-MM-YYYY)')
+      .setLabel('Fill in the day your Registration period started (DD-MM-YYYY)')
+      .setPlaceholder('Example: 25-12-2026')
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
 
     const timeInput = new TextInputBuilder()
       .setCustomId('time')
       .setLabel('Fill in the fixed time for the passes to open (HH:MM:SS)')
+      .setPlaceholder('Example: 18:00:00')
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
 
@@ -169,8 +169,6 @@ client.on('interactionCreate', async interaction => {
 
     return interaction.showModal(modal);
   }
-
-  /* -------- TIMELINE MODAL SUBMIT -------- */
 
   if (interaction.isModalSubmit() && interaction.customId.startsWith("timeline_modal_")) {
 
@@ -231,7 +229,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  /* -------- EVENTS COMMAND -------- */
+  /* -------- EVENTS -------- */
 
   if (interaction.isChatInputCommand() && interaction.commandName === 'events') {
 
@@ -251,8 +249,6 @@ client.on('interactionCreate', async interaction => {
       flags: 64
     });
   }
-
-  /* -------- EVENTS SELECT MENU -------- */
 
   if (interaction.isStringSelectMenu() && interaction.customId === 'week_select') {
 
@@ -292,9 +288,14 @@ client.on('interactionCreate', async interaction => {
       const response = await axios.get(url);
       const events = response.data.items;
 
+      const titleText =
+        selected === "current"
+          ? "📅 Current Week Events"
+          : "📅 Next Week Events";
+
       const embed = new EmbedBuilder()
         .setColor("#7B2CBF")
-        .setTitle(selected === "current" ? "📅 Current Week Events" : "📅 Next Week Events")
+        .setTitle(titleText)
         .setFooter({ text: "Kingdom 3558 • UTC" })
         .setTimestamp();
 
@@ -307,22 +308,75 @@ client.on('interactionCreate', async interaction => {
           end.setUTCDate(end.getUTCDate() - 1);
         }
 
-        if (end < todayUTC) return;
+        const startUTC = new Date(Date.UTC(
+          start.getUTCFullYear(),
+          start.getUTCMonth(),
+          start.getUTCDate()
+        ));
+
+        const endUTC = new Date(Date.UTC(
+          end.getUTCFullYear(),
+          end.getUTCMonth(),
+          end.getUTCDate()
+        ));
+
+        if (endUTC < todayUTC) return;
+
+        const dateFormatter = new Intl.DateTimeFormat("en-US", {
+          month: "long",
+          day: "numeric",
+          timeZone: "UTC",
+        });
+
+        const startDate = dateFormatter.format(startUTC);
+        const endDate = dateFormatter.format(endUTC);
+
+        let durationDays = Math.round(
+          (endUTC - startUTC) / (1000 * 60 * 60 * 24)
+        ) + 1;
+
+        if (durationDays <= 0) durationDays = 1;
+
+        const diffDays = Math.round(
+          (startUTC - todayUTC) / (1000 * 60 * 60 * 24)
+        );
+
+        let relativeText = "";
+        if (diffDays > 0) {
+          relativeText = `Arrives in ${diffDays} day${diffDays > 1 ? "s" : ""}`;
+        } else if (diffDays === 0) {
+          relativeText = "Starts today";
+        } else {
+          relativeText = "Already started";
+        }
 
         const emoji = getEventEmoji(event.summary);
 
         embed.addFields({
           name: `${emoji} ${event.summary}`,
-          value: `📆 ${start.toDateString()} → ${end.toDateString()}\n\n━━━━━━━━━━━━━━━━━━`,
+          value:
+`➤ ${relativeText}
+📆 ${startDate} → ${endDate}
+⏳ Event Duration: ${durationDays} day${durationDays > 1 ? "s" : ""}
+
+━━━━━━━━━━━━━━━━━━`,
           inline: false
         });
+
       });
 
-      await interaction.editReply({ embeds: [embed], components: [] });
+      interaction.editReply({
+        content: '',
+        embeds: [embed],
+        components: []
+      });
 
     } catch (error) {
       console.error(error.response?.data || error.message);
-      await interaction.editReply("Error fetching events.");
+      interaction.editReply({
+        content: "Error fetching events.",
+        components: []
+      });
     }
   }
 });
