@@ -75,7 +75,7 @@ function getEventEmoji(eventName) {
   return "📅";
 }
 
-/* ---------------- GOOGLE SHEETS LOGIC ---------------- */
+/* ---------------- GOOGLE SHEETS LOGIC (TIMELINE) ---------------- */
 
 async function getTimelineFromSheets(interaction) {
     const creds = JSON.parse(process.env.GOOGLE_JSON_CREDS);
@@ -116,7 +116,7 @@ async function getTimelineFromSheets(interaction) {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  // NUEVO COMANDO TIMELINE
+  // --- NEW TIMELINE LOGIC ---
   if (interaction.commandName === 'timeline') {
     await interaction.deferReply();
     try {
@@ -140,7 +140,7 @@ client.on('interactionCreate', async (interaction) => {
     }
   }
 
-  // COMANDO EVENTS (TU CÓDIGO ORIGINAL RESTAURADO)
+  // --- ORIGINAL EVENTS LOGIC (UNTOUCHED) ---
   if (interaction.commandName === 'events') {
 
     await interaction.deferReply();
