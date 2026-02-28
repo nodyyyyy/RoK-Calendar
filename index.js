@@ -36,8 +36,8 @@ const SPREADSHEETS = {
     id: "1RGWGVNzcP5Q9br9K95dpKbnMuVKdJ41KdYkhX407WbY",
     startRow: 25,
     endRow: 30,
-    labelCol: 1, // B
-    dateCol: 3   // D
+    labelCol: 1,
+    dateCol: 3
   }
 };
 
@@ -119,7 +119,7 @@ function getEventEmoji(eventName) {
 
 client.on('interactionCreate', async interaction => {
 
-  /* -------- TIMELINE STEP 1 -------- */
+  /* -------- TIMELINE COMMAND -------- */
 
   if (interaction.isChatInputCommand() && interaction.commandName === 'timeline') {
 
@@ -140,7 +140,7 @@ client.on('interactionCreate', async interaction => {
     });
   }
 
-  /* -------- TIMELINE STEP 2 -------- */
+  /* -------- TIMELINE SELECT -------- */
 
   if (interaction.isStringSelectMenu() && interaction.customId === 'timeline_sheet_select') {
 
@@ -170,7 +170,7 @@ client.on('interactionCreate', async interaction => {
     return interaction.showModal(modal);
   }
 
-  /* -------- TIMELINE STEP 3 -------- */
+  /* -------- TIMELINE MODAL SUBMIT -------- */
 
   if (interaction.isModalSubmit() && interaction.customId.startsWith("timeline_modal_")) {
 
@@ -231,7 +231,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  /* -------- EVENTS -------- */
+  /* -------- EVENTS COMMAND -------- */
 
   if (interaction.isChatInputCommand() && interaction.commandName === 'events') {
 
@@ -252,6 +252,79 @@ client.on('interactionCreate', async interaction => {
     });
   }
 
+  /* -------- EVENTS SELECT MENU -------- */
+
+  if (interaction.isStringSelectMenu() && interaction.customId === 'week_select') {
+
+    await interaction.deferUpdate();
+
+    const selected = interaction.values[0];
+
+    const now = new Date();
+    const todayUTC = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate()
+    ));
+
+    const day = todayUTC.getUTCDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+
+    const startOfWeek = new Date(todayUTC);
+    startOfWeek.setUTCDate(todayUTC.getUTCDate() + diffToMonday);
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 7);
+
+    let filterStart = startOfWeek;
+    let filterEnd = endOfWeek;
+
+    if (selected === 'next') {
+      filterStart = new Date(endOfWeek);
+      filterEnd = new Date(filterStart);
+      filterEnd.setUTCDate(filterStart.getUTCDate() + 7);
+    }
+
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events?key=${API_KEY}&timeMin=${filterStart.toISOString()}&timeMax=${filterEnd.toISOString()}&singleEvents=true&orderBy=startTime`;
+
+    try {
+
+      const response = await axios.get(url);
+      const events = response.data.items;
+
+      const embed = new EmbedBuilder()
+        .setColor("#7B2CBF")
+        .setTitle(selected === "current" ? "📅 Current Week Events" : "📅 Next Week Events")
+        .setFooter({ text: "Kingdom 3558 • UTC" })
+        .setTimestamp();
+
+      events.forEach(event => {
+
+        let start = new Date(event.start.dateTime || event.start.date);
+        let end = new Date(event.end.dateTime || event.end.date);
+
+        if (event.start.date && event.end.date) {
+          end.setUTCDate(end.getUTCDate() - 1);
+        }
+
+        if (end < todayUTC) return;
+
+        const emoji = getEventEmoji(event.summary);
+
+        embed.addFields({
+          name: `${emoji} ${event.summary}`,
+          value: `📆 ${start.toDateString()} → ${end.toDateString()}\n\n━━━━━━━━━━━━━━━━━━`,
+          inline: false
+        });
+      });
+
+      await interaction.editReply({ embeds: [embed], components: [] });
+
+    } catch (error) {
+      console.error(error.response?.data || error.message);
+      await interaction.editReply("Error fetching events.");
+    }
+  }
 });
 
 client.login(TOKEN);
