@@ -155,15 +155,17 @@ client.on('interactionCreate', async interaction => {
         .setFooter({ text: "Kingdom 3558 • UTC" })
         .setTimestamp();
 
+      // 🔥 CORREGIDO AQUÍ
+
       for (let row = 25; row <= 33; row++) {
 
-        const label = sheet.getCell(row, 1)?.value; // B
-        const dateValue = sheet.getCell(row, 5)?.value; // F
+        const label = sheet.getCell(row, 1)?.formattedValue; // B
+        const dateValue = sheet.getCell(row, 3)?.formattedValue; // D (NO F)
 
         if (!label || !dateValue) continue;
 
         embed.addFields({
-          name: `🟣 ${label}`,
+          name: `${getEventEmoji(label)} ${label}`,
           value: `📆 ${dateValue}\n\n━━━━━━━━━━━━━━━━━━`,
           inline: false
         });
