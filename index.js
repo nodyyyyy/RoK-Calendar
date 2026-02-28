@@ -6,7 +6,10 @@ const {
   Routes, 
   SlashCommandBuilder,
   ActionRowBuilder,
-  StringSelectMenuBuilder
+  StringSelectMenuBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
 } = require('discord.js');
 
 const axios = require('axios');
@@ -18,7 +21,25 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 const API_KEY = process.env.GOOGLE_API_KEY;
 const CALENDAR_ID = process.env.CALENDAR_ID;
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
+
+/* ---------------- SPREADSHEETS CONFIG ---------------- */
+
+const SPREADSHEETS = {
+  HA: {
+    id: "1ETPuRl5QPvjAwx4wLPgMHUxoeveauXECW_v7gVRSW84",
+    startRow: 25,
+    endRow: 33,
+    labelCol: 1,
+    dateCol: 3
+  },
+  Tides: {
+    id: "1RGWGVNzcP5Q9br9K95dpKbnMuVKdJ41KdYkhX407WbY",
+    startRow: 24,
+    endRow: 29,
+    labelCol: 1,
+    dateCol: 3
+  }
+};
 
 /* ---------------- GOOGLE SERVICE ACCOUNT ---------------- */
 
@@ -55,19 +76,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('timeline')
-    .setDescription('Updates timeline dates and returns calculated results')
-    .addStringOption(option =>
-      option.setName('date1')
-        .setDescription('Date for D10 (DD-MM-YYYY)')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('date2')
-        .setDescription('Date for D14 (DD-MM-YYYY)')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('time')
-        .setDescription('Time for D19 (HH:MM:SS)')
-        .setRequired(true))
+    .setDescription('Select sheet and update timeline')
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -87,9 +96,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 /* ---------------- EMOJI DETECTION ---------------- */
 
 function getEventEmoji(eventName) {
-
   const name = eventName.toLowerCase();
-
   if (name.includes("wheel")) return "<:WheelOfFortune:1476403078696534026>";
   if (name.includes("gems")) return "<:MorethanGems:1476403357387198677>";
   if (name.includes("olympia")) return "<:ChampionsofOlympia:1476403668172537928>";
@@ -105,7 +112,6 @@ function getEventEmoji(eventName) {
   if (name.includes("shadow")) return "<:ShadowLegion:1476402579339612293>";
   if (name.includes("ian")) return "<:IansBallads:1476403492049522760>";
   if (name.includes("mobilization")) return "<:AllianceMobilization:1476402816263389326>";
-
   return "🟣";
 }
 
@@ -113,15 +119,76 @@ function getEventEmoji(eventName) {
 
 client.on('interactionCreate', async interaction => {
 
-  /* ---------------- TIMELINE ---------------- */
+  /* ---------------- TIMELINE STEP 1: SELECT SHEET ---------------- */
 
   if (interaction.isChatInputCommand() && interaction.commandName === 'timeline') {
 
+    const row = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('timeline_sheet_select')
+        .setPlaceholder('Select Spreadsheet')
+        .addOptions([
+          { label: 'HA', value: 'HA' },
+          { label: 'Tides', value: 'Tides' }
+        ])
+    );
+
+    return interaction.reply({
+      content: "Select which spreadsheet to update:",
+      components: [row],
+      flags: 64
+    });
+  }
+
+  /* ---------------- TIMELINE STEP 2: SHOW MODAL ---------------- */
+
+  if (interaction.isStringSelectMenu() && interaction.customId === 'timeline_sheet_select') {
+
+    const selectedSheet = interaction.values[0];
+
+    const modal = new ModalBuilder()
+      .setCustomId(`timeline_modal_${selectedSheet}`)
+      .setTitle(`Update Timeline (${selectedSheet})`);
+
+    const date1Input = new TextInputBuilder()
+      .setCustomId('date1')
+      .setLabel('Date for D10 (DD-MM-YYYY)')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const date2Input = new TextInputBuilder()
+      .setCustomId('date2')
+      .setLabel('Date for D14 (DD-MM-YYYY)')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const timeInput = new TextInputBuilder()
+      .setCustomId('time')
+      .setLabel('Time for D19 (HH:MM:SS)')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(date1Input),
+      new ActionRowBuilder().addComponents(date2Input),
+      new ActionRowBuilder().addComponents(timeInput)
+    );
+
+    return interaction.showModal(modal);
+  }
+
+  /* ---------------- TIMELINE STEP 3: PROCESS MODAL ---------------- */
+
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("timeline_modal_")) {
+
     await interaction.deferReply();
 
-    const date1 = interaction.options.getString('date1');
-    const date2 = interaction.options.getString('date2');
-    const time = interaction.options.getString('time');
+    const selectedSheetKey = interaction.customId.split("_")[2];
+    const config = SPREADSHEETS[selectedSheetKey];
+
+    const date1 = interaction.fields.getTextInputValue("date1");
+    const date2 = interaction.fields.getTextInputValue("date2");
+    const time = interaction.fields.getTextInputValue("time");
 
     try {
 
@@ -130,18 +197,14 @@ client.on('interactionCreate', async interaction => {
         scopes: ['https://www.googleapis.com/auth/spreadsheets']
       });
 
-      const doc = new GoogleSpreadsheet(SPREADSHEET_ID);
+      const doc = new GoogleSpreadsheet(config.id);
       doc.auth = auth;
 
       await doc.loadInfo();
       const sheet = doc.sheetsByTitle['Save the dates'];
 
-      if (!sheet) {
-        return interaction.editReply("❌ Sheet 'Save the dates' not found.");
-      }
-
       await sheet.loadCells('D10:D19');
-      await sheet.loadCells('B26:F34');
+      await sheet.loadCells('B26:F40');
 
       sheet.getCellByA1('D10').value = date1;
       sheet.getCellByA1('D14').value = date2;
@@ -151,16 +214,14 @@ client.on('interactionCreate', async interaction => {
 
       const embed = new EmbedBuilder()
         .setColor("#7B2CBF")
-        .setTitle("📅 Timeline Results")
+        .setTitle(`📅 Timeline Results (${selectedSheetKey})`)
         .setFooter({ text: "Kingdom 3558 • UTC" })
         .setTimestamp();
 
-      // 🔥 CORREGIDO AQUÍ
+      for (let row = config.startRow; row <= config.endRow; row++) {
 
-      for (let row = 25; row <= 33; row++) {
-
-        const label = sheet.getCell(row, 1)?.formattedValue; // B
-        const dateValue = sheet.getCell(row, 3)?.formattedValue; // D (NO F)
+        const label = sheet.getCell(row, config.labelCol)?.formattedValue;
+        const dateValue = sheet.getCell(row, config.dateCol)?.formattedValue;
 
         if (!label || !dateValue) continue;
 
@@ -200,9 +261,9 @@ client.on('interactionCreate', async interaction => {
     });
   }
 
-  /* ---------------- SELECT MENU ---------------- */
+  /* ---------------- EVENTS SELECT MENU ---------------- */
 
-  if (interaction.isStringSelectMenu()) {
+  if (interaction.isStringSelectMenu() && interaction.customId === 'week_select') {
 
     await interaction.deferUpdate();
 
@@ -240,14 +301,9 @@ client.on('interactionCreate', async interaction => {
       const response = await axios.get(url);
       const events = response.data.items;
 
-      const titleText =
-        selected === "current"
-          ? "📅 Current Week Events"
-          : "📅 Next Week Events";
-
       const embed = new EmbedBuilder()
         .setColor("#7B2CBF")
-        .setTitle(titleText)
+        .setTitle(selected === "current" ? "📅 Current Week Events" : "📅 Next Week Events")
         .setFooter({ text: "Kingdom 3558 • UTC" })
         .setTimestamp();
 
@@ -269,13 +325,9 @@ client.on('interactionCreate', async interaction => {
           value: `📆 ${start.toDateString()} → ${end.toDateString()}\n\n━━━━━━━━━━━━━━━━━━`,
           inline: false
         });
-
       });
 
-      await interaction.editReply({
-        embeds: [embed],
-        components: []
-      });
+      await interaction.editReply({ embeds: [embed], components: [] });
 
     } catch (error) {
       console.error(error.response?.data || error.message);
