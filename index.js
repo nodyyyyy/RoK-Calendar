@@ -27,7 +27,7 @@ client.once('ready', () => {
   console.log(`Bot online as ${client.user.tag}`);
 });
 
-/* ---------------- SLASH COMMAND REGISTRATION ---------------- */
+/* ---------------- SLASH COMMANDS REGISTRATION ---------------- */
 
 const commands = [
   new SlashCommandBuilder()
@@ -35,7 +35,7 @@ const commands = [
     .setDescription('Shows kingdom events'),
   new SlashCommandBuilder()
     .setName('timeline')
-    .setDescription('Update KvK variables and view the schedule')
+    .setDescription('Update variables and view the schedule from Google Sheets')
     .addStringOption(opt => opt.setName('registration_start').setDescription('Set Registration Start (YYYY-MM-DD)'))
     .addStringOption(opt => opt.setName('kvk_start').setDescription('Set Pre-KvK Start Date (YYYY-MM-DD)'))
     .addStringOption(opt => opt.setName('pass_time').setDescription('Set Fixed Pass Time (HH:MM:SS)')),
@@ -55,19 +55,26 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
   }
 })();
 
-/* ---------------- EMOJI KEYWORD DETECTION ---------------- */
+/* ---------------- EMOJI KEYWORD DETECTION (ORIGINAL) ---------------- */
 
 function getEventEmoji(eventName) {
   const name = eventName.toLowerCase();
-  if (name.includes("wheel")) return "<:WheelOfFortune:1328456453987504240>";
-  if (name.includes("mge") || name.includes("greatest estate")) return "<:MGE:1328456451999273062>";
-  if (name.includes("hammer") || name.includes("more than gems")) return "💎";
-  if (name.includes("pass")) return "⚔️";
-  if (name.includes("ruin") || name.includes("altar")) return "🏛️";
+
+  if (name.includes("wheel"))
+    return "<:WheelOfFortune:1328456453987504240>";
+  if (name.includes("mge") || name.includes("greatest estate"))
+    return "<:MGE:1328456451999273062>";
+  if (name.includes("hammer") || name.includes("more than gems"))
+    return "💎";
+  if (name.includes("pass"))
+    return "⚔️";
+  if (name.includes("ruin") || name.includes("altar"))
+    return "🏛️";
+
   return "📅";
 }
 
-/* ---------------- GOOGLE SHEETS LOGIC ---------------- */
+/* ---------------- GOOGLE SHEETS LOGIC (NEW) ---------------- */
 
 async function getTimelineFromSheets(interaction) {
     const creds = JSON.parse(process.env.GOOGLE_JSON_CREDS);
@@ -108,7 +115,7 @@ async function getTimelineFromSheets(interaction) {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  // --- TIMELINE COMMAND ---
+  // --- LOGIC FOR /timeline ---
   if (interaction.commandName === 'timeline') {
     await interaction.deferReply();
     try {
@@ -132,7 +139,7 @@ client.on('interactionCreate', async (interaction) => {
     }
   }
 
-  // --- EVENTS COMMAND (ORIGINAL) ---
+  // --- LOGIC FOR /events (ORIGINAL CODE) ---
   if (interaction.commandName === 'events') {
     await interaction.deferReply();
     try {
@@ -161,16 +168,23 @@ client.on('interactionCreate', async (interaction) => {
         if (endUTC < todayUTC) return;
 
         const dateFormatter = new Intl.DateTimeFormat("en-US", {
-          month: "long", day: "numeric", timeZone: "UTC",
+          month: "long",
+          day: "numeric",
+          timeZone: "UTC",
         });
 
         const startDate = dateFormatter.format(startUTC);
         const endDate = dateFormatter.format(endUTC);
 
-        let durationDays = Math.round((endUTC - startUTC) / (1000 * 60 * 60 * 24)) + 1;
+        let durationDays = Math.round(
+          (endUTC - startUTC) / (1000 * 60 * 60 * 24)
+        ) + 1;
+
         if (durationDays <= 0) durationDays = 1;
 
-        const diffDays = Math.round((startUTC - todayUTC) / (1000 * 60 * 60 * 24));
+        const diffDays = Math.round(
+          (startUTC - todayUTC) / (1000 * 60 * 60 * 24)
+        );
 
         let relativeText = "";
         if (diffDays > 0) {
@@ -185,12 +199,22 @@ client.on('interactionCreate', async (interaction) => {
 
         embed.addFields({
           name: `${emoji} ${event.summary}`,
-          value: `➤ ${relativeText}\n📆 ${startDate} → ${endDate}\n⏳ Duration: ${durationDays} day${durationDays > 1 ? "s" : ""}\n━━━━━━━━━━━━━━━━━━`,
+          value:
+`➤ ${relativeText}
+📆 ${startDate} → ${endDate}
+⏳ Event Duration: ${durationDays} day${durationDays > 1 ? "s" : ""}
+
+━━━━━━━━━━━━━━━━━━`,
           inline: false
         });
       });
 
-      interaction.editReply({ embeds: [embed] });
+      interaction.editReply({
+        content: '',
+        embeds: [embed],
+        components: []
+      });
+
     } catch (error) {
       console.error(error);
       interaction.editReply('Error fetching calendar events.');
