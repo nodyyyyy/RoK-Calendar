@@ -27,7 +27,7 @@ client.once('ready', () => {
   console.log(`Bot online as ${client.user.tag}`);
 });
 
-/* ---------------- SLASH COMMANDS REGISTRATION ---------------- */
+/* ---------------- SLASH COMMAND ---------------- */
 
 const commands = [
   new SlashCommandBuilder()
@@ -49,15 +49,16 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
       Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
       { body: commands }
     );
-    console.log('Slash commands registered.');
+    console.log('Slash command registered.');
   } catch (error) {
     console.error(error);
   }
 })();
 
-/* ---------------- EMOJI KEYWORD DETECTION (ORIGINAL) ---------------- */
+/* ---------------- EMOJI KEYWORD DETECTION ---------------- */
 
 function getEventEmoji(eventName) {
+
   const name = eventName.toLowerCase();
 
   if (name.includes("wheel"))
@@ -74,7 +75,7 @@ function getEventEmoji(eventName) {
   return "📅";
 }
 
-/* ---------------- GOOGLE SHEETS LOGIC (NEW) ---------------- */
+/* ---------------- GOOGLE SHEETS LOGIC ---------------- */
 
 async function getTimelineFromSheets(interaction) {
     const creds = JSON.parse(process.env.GOOGLE_JSON_CREDS);
@@ -115,7 +116,7 @@ async function getTimelineFromSheets(interaction) {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  // --- LOGIC FOR /timeline ---
+  // NUEVO COMANDO TIMELINE
   if (interaction.commandName === 'timeline') {
     await interaction.deferReply();
     try {
@@ -135,13 +136,15 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       console.error(error);
-      await interaction.editReply("❌ Error syncing with Google Sheets. Check environment variables.");
+      await interaction.editReply("❌ Error syncing with Google Sheets.");
     }
   }
 
-  // --- LOGIC FOR /events (ORIGINAL CODE) ---
+  // COMANDO EVENTS (TU CÓDIGO ORIGINAL RESTAURADO)
   if (interaction.commandName === 'events') {
+
     await interaction.deferReply();
+
     try {
       const url = `https://www.googleapis.com/calendar/v3/calendars/${CALENDAR_ID}/events?key=${API_KEY}&singleEvents=true&orderBy=startTime`;
       const response = await axios.get(url);
@@ -160,8 +163,10 @@ client.on('interactionCreate', async (interaction) => {
       todayUTC.setUTCHours(0, 0, 0, 0);
 
       events.forEach((event) => {
+
         const start = event.start.dateTime || event.start.date;
         const end = event.end.dateTime || event.end.date;
+
         const startUTC = new Date(start);
         const endUTC = new Date(end);
 
@@ -207,6 +212,7 @@ client.on('interactionCreate', async (interaction) => {
 ━━━━━━━━━━━━━━━━━━`,
           inline: false
         });
+
       });
 
       interaction.editReply({
