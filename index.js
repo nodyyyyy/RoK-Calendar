@@ -17,16 +17,32 @@ const GUILD_ID = process.env.GUILD_ID;
 const API_KEY = process.env.GOOGLE_API_KEY;
 const CALENDAR_ID = process.env.CALENDAR_ID;
 
-/* NEW ENV */
-const GOOGLE_SERVICE_ACCOUNT = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
+
+/* ---------------- SAFE GOOGLE SERVICE ACCOUNT ---------------- */
+
+let GOOGLE_SERVICE_ACCOUNT;
+
+if (!process.env.GOOGLE_SERVICE_ACCOUNT) {
+  console.error("❌ GOOGLE_SERVICE_ACCOUNT is missing in Railway variables.");
+  process.exit(1);
+}
+
+try {
+  GOOGLE_SERVICE_ACCOUNT = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+} catch (err) {
+  console.error("❌ Invalid JSON in GOOGLE_SERVICE_ACCOUNT:", err.message);
+  process.exit(1);
+}
+
+/* ---------------- DISCORD CLIENT ---------------- */
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
 });
 
 client.once('ready', () => {
-  console.log(`Bot online as ${client.user.tag}`);
+  console.log(`✅ Bot online as ${client.user.tag}`);
 });
 
 /* ---------------- SLASH COMMANDS ---------------- */
@@ -61,16 +77,18 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
       Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
       { body: commands }
     );
-    console.log('Slash commands registered.');
+    console.log('✅ Slash commands registered.');
   } catch (error) {
     console.error(error);
   }
 })();
 
-/* ---------------- EMOJI FUNCTION ---------------- */
+/* ---------------- EMOJI KEYWORD DETECTION ---------------- */
 
 function getEventEmoji(eventName) {
+
   const name = eventName.toLowerCase();
+
   if (name.includes("wheel")) return "<:WheelOfFortune:1476403078696534026>";
   if (name.includes("gems")) return "<:MorethanGems:1476403357387198677>";
   if (name.includes("olympia")) return "<:ChampionsofOlympia:1476403668172537928>";
@@ -86,6 +104,7 @@ function getEventEmoji(eventName) {
   if (name.includes("shadow")) return "<:ShadowLegion:1476402579339612293>";
   if (name.includes("ian")) return "<:IansBallads:1476403492049522760>";
   if (name.includes("mobilization")) return "<:AllianceMobilization:1476402816263389326>";
+
   return "🟣";
 }
 
@@ -93,7 +112,7 @@ function getEventEmoji(eventName) {
 
 client.on('interactionCreate', async interaction => {
 
-  /* ---------- TIMELINE ---------- */
+  /* ---------------- TIMELINE COMMAND ---------------- */
 
   if (interaction.isChatInputCommand() && interaction.commandName === 'timeline') {
 
@@ -110,6 +129,10 @@ client.on('interactionCreate', async interaction => {
       await doc.loadInfo();
 
       const sheet = doc.sheetsByTitle['Save the dates'];
+
+      if (!sheet) {
+        return interaction.editReply("❌ Sheet 'Save the dates' not found.");
+      }
 
       await sheet.loadCells('D10:D19');
 
@@ -128,6 +151,7 @@ client.on('interactionCreate', async interaction => {
         .setTimestamp();
 
       rows.forEach(row => {
+
         const label = row._rawData[1]; // Column B
         const dateValue = row._rawData[5]; // Column F
 
@@ -135,20 +159,24 @@ client.on('interactionCreate', async interaction => {
 
         embed.addFields({
           name: `🟣 ${label}`,
-          value: `📆 ${dateValue}\n\n━━━━━━━━━━━━━━━━━━`,
+          value:
+`📆 ${dateValue}
+
+━━━━━━━━━━━━━━━━━━`,
           inline: false
         });
+
       });
 
       await interaction.editReply({ embeds: [embed] });
 
     } catch (error) {
       console.error(error);
-      await interaction.editReply("Error updating timeline.");
+      await interaction.editReply("❌ Error updating timeline.");
     }
   }
 
-  /* ---------- EVENTS ---------- */
+  /* ---------------- EVENTS COMMAND ---------------- */
 
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'events') {
@@ -171,7 +199,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  /* ---------- SELECT MENU ---------- */
+  /* ---------------- SELECT MENU ---------------- */
 
   if (interaction.isStringSelectMenu()) {
 
