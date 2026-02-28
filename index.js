@@ -20,19 +20,19 @@ const API_KEY = process.env.GOOGLE_API_KEY;
 const CALENDAR_ID = process.env.CALENDAR_ID;
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
-/* ---------------- SAFE GOOGLE SERVICE ACCOUNT ---------------- */
+/* ---------------- GOOGLE SERVICE ACCOUNT ---------------- */
 
 let GOOGLE_SERVICE_ACCOUNT;
 
 if (!process.env.GOOGLE_SERVICE_ACCOUNT) {
-  console.error("❌ GOOGLE_SERVICE_ACCOUNT is missing in Railway variables.");
+  console.error("❌ GOOGLE_SERVICE_ACCOUNT missing.");
   process.exit(1);
 }
 
 try {
   GOOGLE_SERVICE_ACCOUNT = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
 } catch (err) {
-  console.error("❌ Invalid JSON in GOOGLE_SERVICE_ACCOUNT:", err.message);
+  console.error("❌ Invalid GOOGLE_SERVICE_ACCOUNT JSON:", err.message);
   process.exit(1);
 }
 
@@ -84,7 +84,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
   }
 })();
 
-/* ---------------- EMOJI KEYWORD DETECTION ---------------- */
+/* ---------------- EMOJI DETECTION ---------------- */
 
 function getEventEmoji(eventName) {
 
@@ -113,7 +113,7 @@ function getEventEmoji(eventName) {
 
 client.on('interactionCreate', async interaction => {
 
-  /* ---------------- TIMELINE COMMAND ---------------- */
+  /* ---------------- TIMELINE ---------------- */
 
   if (interaction.isChatInputCommand() && interaction.commandName === 'timeline') {
 
@@ -134,7 +134,6 @@ client.on('interactionCreate', async interaction => {
       doc.auth = auth;
 
       await doc.loadInfo();
-
       const sheet = doc.sheetsByTitle['Save the dates'];
 
       if (!sheet) {
@@ -142,6 +141,7 @@ client.on('interactionCreate', async interaction => {
       }
 
       await sheet.loadCells('D10:D19');
+      await sheet.loadCells('B26:F34');
 
       sheet.getCellByA1('D10').value = date1;
       sheet.getCellByA1('D14').value = date2;
@@ -149,31 +149,25 @@ client.on('interactionCreate', async interaction => {
 
       await sheet.saveUpdatedCells();
 
-      const rows = await sheet.getRows({ offset: 25, limit: 9 });
-
       const embed = new EmbedBuilder()
         .setColor("#7B2CBF")
         .setTitle("📅 Timeline Results")
         .setFooter({ text: "Kingdom 3558 • UTC" })
         .setTimestamp();
 
-      rows.forEach(row => {
+      for (let row = 25; row <= 33; row++) {
 
-        const label = row._rawData[1];
-        const dateValue = row._rawData[5];
+        const label = sheet.getCell(row, 1)?.value; // B
+        const dateValue = sheet.getCell(row, 5)?.value; // F
 
-        if (!label || !dateValue) return;
+        if (!label || !dateValue) continue;
 
         embed.addFields({
           name: `🟣 ${label}`,
-          value:
-`📆 ${dateValue}
-
-━━━━━━━━━━━━━━━━━━`,
+          value: `📆 ${dateValue}\n\n━━━━━━━━━━━━━━━━━━`,
           inline: false
         });
-
-      });
+      }
 
       await interaction.editReply({ embeds: [embed] });
 
@@ -185,25 +179,23 @@ client.on('interactionCreate', async interaction => {
 
   /* ---------------- EVENTS COMMAND ---------------- */
 
-  if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === 'events') {
+  if (interaction.isChatInputCommand() && interaction.commandName === 'events') {
 
-      const row = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId('week_select')
-          .setPlaceholder('Select week')
-          .addOptions([
-            { label: 'Current Week', value: 'current' },
-            { label: 'Next Week', value: 'next' }
-          ])
-      );
+    const row = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('week_select')
+        .setPlaceholder('Select week')
+        .addOptions([
+          { label: 'Current Week', value: 'current' },
+          { label: 'Next Week', value: 'next' }
+        ])
+    );
 
-      return interaction.reply({
-        content: 'Select which week to display:',
-        components: [row],
-        flags: 64
-      });
-    }
+    return interaction.reply({
+      content: 'Select which week to display:',
+      components: [row],
+      flags: 64
+    });
   }
 
   /* ---------------- SELECT MENU ---------------- */
@@ -266,75 +258,26 @@ client.on('interactionCreate', async interaction => {
           end.setUTCDate(end.getUTCDate() - 1);
         }
 
-        const startUTC = new Date(Date.UTC(
-          start.getUTCFullYear(),
-          start.getUTCMonth(),
-          start.getUTCDate()
-        ));
-
-        const endUTC = new Date(Date.UTC(
-          end.getUTCFullYear(),
-          end.getUTCMonth(),
-          end.getUTCDate()
-        ));
-
-        if (endUTC < todayUTC) return;
-
-        const dateFormatter = new Intl.DateTimeFormat("en-US", {
-          month: "long",
-          day: "numeric",
-          timeZone: "UTC",
-        });
-
-        const startDate = dateFormatter.format(startUTC);
-        const endDate = dateFormatter.format(endUTC);
-
-        let durationDays = Math.round(
-          (endUTC - startUTC) / (1000 * 60 * 60 * 24)
-        ) + 1;
-
-        if (durationDays <= 0) durationDays = 1;
-
-        const diffDays = Math.round(
-          (startUTC - todayUTC) / (1000 * 60 * 60 * 24)
-        );
-
-        let relativeText = "";
-        if (diffDays > 0) {
-          relativeText = `Arrives in ${diffDays} day${diffDays > 1 ? "s" : ""}`;
-        } else if (diffDays === 0) {
-          relativeText = "Starts today";
-        } else {
-          relativeText = "Already started";
-        }
+        if (end < todayUTC) return;
 
         const emoji = getEventEmoji(event.summary);
 
         embed.addFields({
           name: `${emoji} ${event.summary}`,
-          value:
-`➤ ${relativeText}
-📆 ${startDate} → ${endDate}
-⏳ Event Duration: ${durationDays} day${durationDays > 1 ? "s" : ""}
-
-━━━━━━━━━━━━━━━━━━`,
+          value: `📆 ${start.toDateString()} → ${end.toDateString()}\n\n━━━━━━━━━━━━━━━━━━`,
           inline: false
         });
 
       });
 
-      interaction.editReply({
-        content: '',
+      await interaction.editReply({
         embeds: [embed],
         components: []
       });
 
     } catch (error) {
       console.error(error.response?.data || error.message);
-      interaction.editReply({
-        content: "Error fetching events.",
-        components: []
-      });
+      await interaction.editReply("Error fetching events.");
     }
   }
 });
