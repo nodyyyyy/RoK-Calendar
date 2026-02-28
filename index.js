@@ -29,15 +29,15 @@ const SPREADSHEETS = {
     id: "1ETPuRl5QPvjAwx4wLPgMHUxoeveauXECW_v7gVRSW84",
     startRow: 25,
     endRow: 33,
-    labelCol: 1,
-    dateCol: 3
+    labelCol: 1, // B
+    dateCol: 3   // D
   },
   Tides: {
     id: "1RGWGVNzcP5Q9br9K95dpKbnMuVKdJ41KdYkhX407WbY",
-    startRow: 23,
+    startRow: 25,
     endRow: 30,
-    labelCol: 1,
-    dateCol: 3
+    labelCol: 1, // B
+    dateCol: 3   // D
   }
 };
 
@@ -119,7 +119,7 @@ function getEventEmoji(eventName) {
 
 client.on('interactionCreate', async interaction => {
 
-  /* ---------------- TIMELINE STEP 1: SELECT SHEET ---------------- */
+  /* -------- TIMELINE STEP 1: SELECT SHEET -------- */
 
   if (interaction.isChatInputCommand() && interaction.commandName === 'timeline') {
 
@@ -140,7 +140,7 @@ client.on('interactionCreate', async interaction => {
     });
   }
 
-  /* ---------------- TIMELINE STEP 2: SHOW MODAL ---------------- */
+  /* -------- TIMELINE STEP 2: SHOW MODAL -------- */
 
   if (interaction.isStringSelectMenu() && interaction.customId === 'timeline_sheet_select') {
 
@@ -177,7 +177,7 @@ client.on('interactionCreate', async interaction => {
     return interaction.showModal(modal);
   }
 
-  /* ---------------- TIMELINE STEP 3: PROCESS MODAL ---------------- */
+  /* -------- TIMELINE STEP 3: PROCESS MODAL -------- */
 
   if (interaction.isModalSubmit() && interaction.customId.startsWith("timeline_modal_")) {
 
@@ -204,7 +204,7 @@ client.on('interactionCreate', async interaction => {
       const sheet = doc.sheetsByTitle['Save the dates'];
 
       await sheet.loadCells('D10:D19');
-      await sheet.loadCells('B26:F40');
+      await sheet.loadCells(`B${config.startRow}:F${config.endRow}`);
 
       sheet.getCellByA1('D10').value = date1;
       sheet.getCellByA1('D14').value = date2;
@@ -218,7 +218,8 @@ client.on('interactionCreate', async interaction => {
         .setFooter({ text: "Kingdom 3558 • UTC" })
         .setTimestamp();
 
-      for (let row = config.startRow; row <= config.endRow; row++) {
+      for (let row = config.startRow - 1; row <= config.endRow - 1; row++) {
+
         const label = sheet.getCell(row, config.labelCol)?.formattedValue;
         const dateValue = sheet.getCell(row, config.dateCol)?.formattedValue;
 
@@ -239,7 +240,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  /* ---------------- EVENTS COMMAND ---------------- */
+  /* -------- EVENTS COMMAND -------- */
 
   if (interaction.isChatInputCommand() && interaction.commandName === 'events') {
 
@@ -260,7 +261,7 @@ client.on('interactionCreate', async interaction => {
     });
   }
 
-  /* ---------------- EVENTS SELECT MENU ---------------- */
+  /* -------- EVENTS SELECT MENU -------- */
 
   if (interaction.isStringSelectMenu() && interaction.customId === 'week_select') {
 
