@@ -34,8 +34,8 @@ const SPREADSHEETS = {
   },
   Tides: {
     id: "1RGWGVNzcP5Q9br9K95dpKbnMuVKdJ41KdYkhX407WbY",
-    startRow: 24,
-    endRow: 29,
+    startRow: 25,
+    endRow: 30,
     labelCol: 1,
     dateCol: 3
   }
@@ -219,7 +219,6 @@ client.on('interactionCreate', async interaction => {
         .setTimestamp();
 
       for (let row = config.startRow; row <= config.endRow; row++) {
-
         const label = sheet.getCell(row, config.labelCol)?.formattedValue;
         const dateValue = sheet.getCell(row, config.dateCol)?.formattedValue;
 
