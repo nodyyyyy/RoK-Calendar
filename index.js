@@ -150,14 +150,14 @@ client.on('interactionCreate', async interaction => {
 
     const dateInput = new TextInputBuilder()
       .setCustomId('date1')
-      .setLabel('Fill in the day your Registration period started (DD-MM-YYYY)')
+      .setLabel('Registration start date (DD-MM-YYYY)')
       .setPlaceholder('Example: 25-12-2026')
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
 
     const timeInput = new TextInputBuilder()
       .setCustomId('time')
-      .setLabel('Fill in the fixed time for the passes to open (HH:MM:SS)')
+      .setLabel('Pass opening time (HH:MM:SS)')
       .setPlaceholder('Example: 18:00:00')
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
