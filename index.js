@@ -9,14 +9,16 @@ const {
   StringSelectMenuBuilder
 } = require('discord.js');
 const axios = require('axios');
-const { GoogleSpreadsheet } = require('google-spreadsheet');
-const { JWT } = require('google-auth-library');
+const { google } = require('googleapis');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 const API_KEY = process.env.GOOGLE_API_KEY;
 const CALENDAR_ID = process.env.CALENDAR_ID;
+
+/* NEW ENV FOR SHEETS */
+const GOOGLE_SERVICE_ACCOUNT = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
 const client = new Client({
@@ -27,18 +29,40 @@ client.once('ready', () => {
   console.log(`Bot online as ${client.user.tag}`);
 });
 
-/* ---------------- SLASH COMMANDS REGISTRATION ---------------- */
+/* ---------------- GOOGLE SHEETS AUTH ---------------- */
+
+const auth = new google.auth.JWT(
+  GOOGLE_SERVICE_ACCOUNT.client_email,
+  null,
+  GOOGLE_SERVICE_ACCOUNT.private_key,
+  ['https://www.googleapis.com/auth/spreadsheets']
+);
+
+const sheets = google.sheets({ version: 'v4', auth });
+
+/* ---------------- SLASH COMMANDS ---------------- */
 
 const commands = [
   new SlashCommandBuilder()
     .setName('events')
     .setDescription('Shows kingdom events'),
+
+  /* NEW COMMAND */
   new SlashCommandBuilder()
     .setName('timeline')
-    .setDescription('Update variables and view the schedule from Google Sheets')
-    .addStringOption(opt => opt.setName('registration_start').setDescription('Set Registration Start (YYYY-MM-DD)'))
-    .addStringOption(opt => opt.setName('kvk_start').setDescription('Set Pre-KvK Start Date (YYYY-MM-DD)'))
-    .addStringOption(opt => opt.setName('pass_time').setDescription('Set Fixed Pass Time (HH:MM:SS)')),
+    .setDescription('Updates timeline dates and returns calculated results')
+    .addStringOption(option =>
+      option.setName('date1')
+        .setDescription('Date for D10 (DD-MM-YYYY)')
+        .setRequired(true))
+    .addStringOption(option =>
+      option.setName('date2')
+        .setDescription('Date for D14 (DD-MM-YYYY)')
+        .setRequired(true))
+    .addStringOption(option =>
+      option.setName('time')
+        .setDescription('Time for D19 (HH:MM:SS)')
+        .setRequired(true))
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -55,7 +79,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
   }
 })();
 
-/* ---------------- EMOJI KEYWORD DETECTION (ORIGINAL) ---------------- */
+/* ---------------- EMOJI KEYWORD DETECTION ---------------- */
 
 function getEventEmoji(eventName) {
 
@@ -109,52 +133,88 @@ function getEventEmoji(eventName) {
   return "🟣";
 }
 
-/* ---------------- GOOGLE SHEETS LOGIC (NEW) ---------------- */
-
-async function getTimelineFromSheets(interaction) {
-    const creds = JSON.parse(process.env.GOOGLE_JSON_CREDS);
-    const auth = new JWT({
-        email: creds.client_email,
-        key: creds.private_key,
-        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-
-    const doc = new GoogleSpreadsheet(SPREADSHEET_ID, auth);
-    await doc.loadInfo();
-    const sheet = doc.sheetsByTitle['Save the dates'];
-
-    const regStart = interaction.options.getString('registration_start');
-    const kvkStart = interaction.options.getString('kvk_start');
-    const passTime = interaction.options.getString('pass_time');
-
-    if (regStart || kvkStart || passTime) {
-        await sheet.loadCells('C10:C18'); 
-        if (regStart) sheet.getCellByA1('C10').value = regStart;
-        if (kvkStart) sheet.getCellByA1('C14').value = kvkStart;
-        if (passTime) sheet.getCellByA1('C18').value = passTime;
-        await sheet.saveUpdatedCells();
-    }
-
-    await sheet.loadCells('A26:C40');
-    const schedule = [];
-    for (let i = 26; i <= 38; i++) {
-        const name = sheet.getCell(i, 0).value;
-        const date = sheet.getCell(i, 2).formattedValue;
-        if (name && date) schedule.push({ name, date });
-    }
-    return schedule;
-}
-
 /* ---------------- INTERACTIONS ---------------- */
 
 client.on('interactionCreate', async interaction => {
 
-  /* ----- Slash Command Handling ----- */
+  /* ---------------- TIMELINE COMMAND ---------------- */
+
+  if (interaction.isChatInputCommand() && interaction.commandName === 'timeline') {
+
+    await interaction.deferReply();
+
+    const date1 = interaction.options.getString('date1');
+    const date2 = interaction.options.getString('date2');
+    const time = interaction.options.getString('time');
+
+    try {
+
+      /* UPDATE CELLS */
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'Save the dates!D10',
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: [[date1]] }
+      });
+
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'Save the dates!D14',
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: [[date2]] }
+      });
+
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'Save the dates!D19',
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: [[time]] }
+      });
+
+      /* READ RESULTS */
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'Save the dates!B26:F34'
+      });
+
+      const rows = response.data.values || [];
+
+      const embed = new EmbedBuilder()
+        .setColor("#7B2CBF")
+        .setTitle("📅 Timeline Results")
+        .setFooter({ text: "Kingdom 3558 • UTC" })
+        .setTimestamp();
+
+      rows.forEach(row => {
+
+        const label = row[0];   // Column B
+        const dateValue = row[4]; // Column F
+
+        if (!label || !dateValue) return;
+
+        embed.addFields({
+          name: `🟣 ${label}`,
+          value:
+`📆 ${dateValue}
+
+━━━━━━━━━━━━━━━━━━`,
+          inline: false
+        });
+      });
+
+      await interaction.editReply({ embeds: [embed] });
+
+    } catch (error) {
+      console.error(error);
+      await interaction.editReply("Error updating timeline.");
+    }
+  }
+
+  /* ---------------- EVENTS COMMAND ---------------- */
 
   if (interaction.isChatInputCommand()) {
-    
-    // ORIGINAL EVENTS COMMAND
     if (interaction.commandName === 'events') {
+
       const row = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId('week_select')
@@ -171,135 +231,137 @@ client.on('interactionCreate', async interaction => {
         ephemeral: true
       });
     }
-
-    // NEW TIMELINE COMMAND
-    if (interaction.commandName === 'timeline') {
-      await interaction.deferReply();
-      try {
-        const data = await getTimelineFromSheets(interaction);
-        const embed = new EmbedBuilder()
-          .setTitle('⏳ Kingdom Event Timeline')
-          .setColor('#FF9900')
-          .setFooter({ text: 'Data synced from Google Sheets' })
-          .setTimestamp();
-
-        let description = "";
-        data.forEach(item => {
-          description += `**${item.name}**\n└ 📅 \`${item.date}\`\n\n`;
-        });
-
-        embed.setDescription(description || "No events found.");
-        await interaction.editReply({ embeds: [embed] });
-      } catch (error) {
-        console.error(error);
-        await interaction.editReply("❌ Error syncing with Google Sheets.");
-      }
-    }
   }
 
-  /* ----- Select Menu Handling (ORIGINAL LOGIC) ----- */
+  /* ---------------- SELECT MENU ---------------- */
 
   if (interaction.isStringSelectMenu()) {
-    if (interaction.customId === 'week_select') {
-      await interaction.deferUpdate();
 
-      const selected = interaction.values[0];
+    await interaction.deferUpdate();
 
-      const now = new Date();
-      const todayUTC = new Date(Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate()
-      ));
+    const selected = interaction.values[0];
 
-      const day = todayUTC.getUTCDay();
-      const diffToMonday = day === 0 ? -6 : 1 - day;
+    const now = new Date();
+    const todayUTC = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate()
+    ));
 
-      const startOfWeek = new Date(todayUTC);
-      startOfWeek.setUTCDate(todayUTC.getUTCDate() + diffToMonday);
+    const day = todayUTC.getUTCDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
 
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 7);
+    const startOfWeek = new Date(todayUTC);
+    startOfWeek.setUTCDate(todayUTC.getUTCDate() + diffToMonday);
 
-      let filterStart = startOfWeek;
-      let filterEnd = endOfWeek;
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 7);
 
-      if (selected === 'next') {
-        filterStart = new Date(endOfWeek);
-        filterEnd = new Date(filterStart);
-        filterEnd.setUTCDate(filterStart.getUTCDate() + 7);
-      }
+    let filterStart = startOfWeek;
+    let filterEnd = endOfWeek;
 
-      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events?key=${API_KEY}&timeMin=${filterStart.toISOString()}&timeMax=${filterEnd.toISOString()}&singleEvents=true&orderBy=startTime`;
+    if (selected === 'next') {
+      filterStart = new Date(endOfWeek);
+      filterEnd = new Date(filterStart);
+      filterEnd.setUTCDate(filterStart.getUTCDate() + 7);
+    }
 
-      try {
-        const response = await axios.get(url);
-        const events = response.data.items;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events?key=${API_KEY}&timeMin=${filterStart.toISOString()}&timeMax=${filterEnd.toISOString()}&singleEvents=true&orderBy=startTime`;
 
-        const titleText = selected === "current" ? "📅 Current Week Events" : "📅 Next Week Events";
+    try {
 
-        const embed = new EmbedBuilder()
-          .setColor("#7B2CBF")
-          .setTitle(titleText)
-          .setFooter({ text: "Kingdom 3558 • UTC" })
-          .setTimestamp();
+      const response = await axios.get(url);
+      const events = response.data.items;
 
-        events.forEach(event => {
-          let start = new Date(event.start.dateTime || event.start.date);
-          let end = new Date(event.end.dateTime || event.end.date);
+      const titleText =
+        selected === "current"
+          ? "📅 Current Week Events"
+          : "📅 Next Week Events";
 
-          if (event.start.date && event.end.date) {
-            end.setUTCDate(end.getUTCDate() - 1);
-          }
+      const embed = new EmbedBuilder()
+        .setColor("#7B2CBF")
+        .setTitle(titleText)
+        .setFooter({ text: "Kingdom 3558 • UTC" })
+        .setTimestamp();
 
-          const startUTC = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
-          const endUTC = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+      events.forEach(event => {
 
-          if (endUTC < todayUTC) return;
+        let start = new Date(event.start.dateTime || event.start.date);
+        let end = new Date(event.end.dateTime || event.end.date);
 
-          const dateFormatter = new Intl.DateTimeFormat("en-US", {
-            month: "long", day: "numeric", timeZone: "UTC",
-          });
+        if (event.start.date && event.end.date) {
+          end.setUTCDate(end.getUTCDate() - 1);
+        }
 
-          const startDate = dateFormatter.format(startUTC);
-          const endDate = dateFormatter.format(endUTC);
+        const startUTC = new Date(Date.UTC(
+          start.getUTCFullYear(),
+          start.getUTCMonth(),
+          start.getUTCDate()
+        ));
 
-          let durationDays = Math.round((endUTC - startUTC) / (1000 * 60 * 60 * 24)) + 1;
-          if (durationDays <= 0) durationDays = 1;
+        const endUTC = new Date(Date.UTC(
+          end.getUTCFullYear(),
+          end.getUTCMonth(),
+          end.getUTCDate()
+        ));
 
-          const diffDays = Math.round((startUTC - todayUTC) / (1000 * 60 * 60 * 24));
+        if (endUTC < todayUTC) return;
 
-          let relativeText = "";
-          if (diffDays > 0) {
-            relativeText = `Arrives in ${diffDays} day${diffDays > 1 ? "s" : ""}`;
-          } else if (diffDays === 0) {
-            relativeText = "Starts today";
-          } else {
-            relativeText = "Already started";
-          }
-
-          const emoji = getEventEmoji(event.summary);
-
-          embed.addFields({
-            name: `${emoji} ${event.summary}`,
-            value: `➤ ${relativeText}\n📆 ${startDate} → ${endDate}\n⏳ Event Duration: ${durationDays} day${durationDays > 1 ? "s" : ""}\n\n━━━━━━━━━━━━━━━━━━`,
-            inline: false
-          });
+        const dateFormatter = new Intl.DateTimeFormat("en-US", {
+          month: "long",
+          day: "numeric",
+          timeZone: "UTC",
         });
 
-        interaction.editReply({
-          content: '',
-          embeds: [embed],
-          components: []
+        const startDate = dateFormatter.format(startUTC);
+        const endDate = dateFormatter.format(endUTC);
+
+        let durationDays = Math.round(
+          (endUTC - startUTC) / (1000 * 60 * 60 * 24)
+        ) + 1;
+
+        if (durationDays <= 0) durationDays = 1;
+
+        const diffDays = Math.round(
+          (startUTC - todayUTC) / (1000 * 60 * 60 * 24)
+        );
+
+        let relativeText = "";
+        if (diffDays > 0) {
+          relativeText = `Arrives in ${diffDays} day${diffDays > 1 ? "s" : ""}`;
+        } else if (diffDays === 0) {
+          relativeText = "Starts today";
+        } else {
+          relativeText = "Already started";
+        }
+
+        const emoji = getEventEmoji(event.summary);
+
+        embed.addFields({
+          name: `${emoji} ${event.summary}`,
+          value:
+`➤ ${relativeText}
+📆 ${startDate} → ${endDate}
+⏳ Event Duration: ${durationDays} day${durationDays > 1 ? "s" : ""}
+
+━━━━━━━━━━━━━━━━━━`,
+          inline: false
         });
 
-      } catch (error) {
-        console.error(error.response?.data || error.message);
-        interaction.editReply({
-          content: "Error fetching events.",
-          components: []
-        });
-      }
+      });
+
+      interaction.editReply({
+        content: '',
+        embeds: [embed],
+        components: []
+      });
+
+    } catch (error) {
+      console.error(error.response?.data || error.message);
+      interaction.editReply({
+        content: "Error fetching events.",
+        components: []
+      });
     }
   }
 });
