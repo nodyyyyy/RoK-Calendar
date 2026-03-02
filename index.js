@@ -393,8 +393,8 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // ────────────────────────────────────────────────
-  //               NUEVAS FUNCIONALIDADES
+   // ────────────────────────────────────────────────
+  //               CUSTOM EVENT FEATURES (ENGLISH)
   // ────────────────────────────────────────────────
 
   const sqlite3 = require('sqlite3').verbose();
@@ -420,20 +420,20 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand() && interaction.commandName === 'create_event') {
     const modal = new ModalBuilder()
       .setCustomId('create_event_modal')
-      .setTitle('Crear Evento Personalizado');
+      .setTitle('Create Custom Event');
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId('event_name')
-          .setLabel('Nombre del evento')
+          .setLabel('Event Name')
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
       ),
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId('event_date')
-          .setLabel('Fecha (DD-MM-YYYY)')
+          .setLabel('Date (DD-MM-YYYY)')
           .setPlaceholder('25-12-2025')
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
@@ -441,7 +441,7 @@ client.on('interactionCreate', async interaction => {
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId('event_time')
-          .setLabel('Hora (HH:MM) UTC')
+          .setLabel('Time (HH:MM) UTC')
           .setPlaceholder('18:00')
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
@@ -452,7 +452,7 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (interaction.isModalSubmit() && interaction.customId === 'create_event_modal') {
-    await interaction.deferReply({ ephemeral: false });
+    await interaction.deferReply();
 
     const eventName = interaction.fields.getTextInputValue('event_name');
     const dateStr = interaction.fields.getTextInputValue('event_date');
@@ -462,10 +462,10 @@ client.on('interactionCreate', async interaction => {
     try {
       const [dd, mm, yyyy] = dateStr.split('-').map(Number);
       const [hh, min] = timeStr.split(':').map(Number);
-      eventDate = new Date(Date.UTC(yyyy, mm-1, dd, hh, min, 0));
+      eventDate = new Date(Date.UTC(yyyy, mm - 1, dd, hh, min, 0));
       if (isNaN(eventDate.getTime())) throw new Error();
     } catch {
-      return interaction.editReply('Formato de fecha/hora inválido. Usa DD-MM-YYYY y HH:MM');
+      return interaction.editReply('Invalid date/time format. Use DD-MM-YYYY and HH:MM (UTC).');
     }
 
     const reminderTime = new Date(eventDate);
@@ -475,11 +475,11 @@ client.on('interactionCreate', async interaction => {
       .setColor('#7B2CBF')
       .setTitle(eventName)
       .setDescription(`${eventDate.toUTCString().split(' GMT')[0]}\n\u200b`)
-      .setFooter({ text: `Kingdom 3558 • UTC • ID: ${interaction.id}` })
+      .setFooter({ text: `Kingdom 3558 • UTC • Event ID: ${interaction.id}` })
       .setImage('https://media.discordapp.net/attachments/1388282858723999914/1435074927240810597/ChatGPT_Image_3_nov_2025_22_05_09.png?format=webp&quality=lossless')
       .addFields(
-        { name: '✅ Asistiré (0)', value: '\u200b', inline: true },
-        { name: '❌ No asistiré (0)', value: '\u200b', inline: true }
+        { name: '✅ Attending (0)', value: '\u200b', inline: true },
+        { name: '❌ Not Attending (0)', value: '\u200b', inline: true }
       );
 
     const row = new ActionRowBuilder()
@@ -487,111 +487,114 @@ client.on('interactionCreate', async interaction => {
         new ButtonBuilder()
           .setCustomId('attend_yes')
           .setLabel('✅')
-          .setStyle('Secondary'),
+          .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId('attend_no')
           .setLabel('❌')
-          .setStyle('Secondary')
+          .setStyle(ButtonStyle.Secondary)
       );
 
-    const msg = await interaction.editReply({ embeds: [embed], components: [row] });
+    const msg = await interaction.editReply({ embeds: [embed], components: [row] }).catch(console.error);
 
-    db.run(
-      `INSERT INTO events (message_id, channel_id, event_name, event_time) VALUES (?, ?, ?, ?)`,
-      [msg.id, msg.channelId, eventName, eventDate.toISOString()]
-    );
+    if (msg) {
+      db.run(
+        `INSERT INTO events (message_id, channel_id, event_name, event_time) VALUES (?, ?, ?, ?)`,
+        [msg.id, msg.channel.id, eventName, eventDate.toISOString()],
+        (err) => { if (err) console.error('DB insert error:', err); }
+      );
+    }
   }
 
+  // Button handler
   if (interaction.isButton()) {
-    const [action] = interaction.customId.split('_');
-    const status = action === 'attend' ? (interaction.customId.endsWith('yes') ? 'yes' : 'no') : null;
-
+    const customId = interaction.customId;
+    let status;
+    if (customId === 'attend_yes') status = 'yes';
+    if (customId === 'attend_no') status = 'no';
     if (!status) return;
 
-    await interaction.deferUpdate();
+    await interaction.deferUpdate().catch(console.error);
 
     db.run(
       `INSERT OR REPLACE INTO signups (message_id, user_id, status) VALUES (?, ?, ?)`,
       [interaction.message.id, interaction.user.id, status],
-      async (err) => {
-        if (err) return console.error(err);
+      (err) => {
+        if (err) return console.error('Signup error:', err);
 
         db.all(
           `SELECT status, COUNT(*) as count, GROUP_CONCAT(user_id) as users 
            FROM signups WHERE message_id = ? GROUP BY status`,
           [interaction.message.id],
           async (err, rows) => {
-            if (err) return console.error(err);
+            if (err) return console.error('Fetch signups error:', err);
 
             const yes = rows.find(r => r.status === 'yes') || { count: 0, users: '' };
             const no  = rows.find(r => r.status === 'no')  || { count: 0, users: '' };
 
             const embed = EmbedBuilder.from(interaction.message.embeds[0])
               .spliceFields(0, 2,
-                { name: `✅ Asistiré (${yes.count})`, value: yes.users ? yes.users.split(',').map(id => `<@${id}>`).join('\n') : '\u200b', inline: true },
-                { name: `❌ No asistiré (${no.count})`, value: no.users ? no.users.split(',').map(id => `<@${id}>`).join('\n') : '\u200b', inline: true }
+                { name: `✅ Attending (${yes.count})`, value: yes.users ? yes.users.split(',').map(id => `<@${id}>`).join('\n') || '\u200b' : '\u200b', inline: true },
+                { name: `❌ Not Attending (${no.count})`, value: no.users ? no.users.split(',').map(id => `<@${id}>`).join('\n') || '\u200b' : '\u200b', inline: true }
               );
 
-            await interaction.editReply({ embeds: [embed] });
+            await interaction.editReply({ embeds: [embed] }).catch(console.error);
           }
         );
       }
     );
   }
 
+  // delete_event command
   if (interaction.isChatInputCommand() && interaction.commandName === 'delete_event') {
     if (!interaction.member.permissions.has('Administrator')) {
-      return interaction.reply({ content: 'Solo administradores pueden usar este comando.', ephemeral: true });
+      return interaction.reply({ content: 'Only administrators can use this command.', ephemeral: true });
     }
 
     const messageId = interaction.options.getString('message_id');
 
     db.get(`SELECT channel_id FROM events WHERE message_id = ?`, [messageId], async (err, row) => {
       if (err || !row) {
-        return interaction.reply({ content: 'Evento no encontrado o ya eliminado.', ephemeral: true });
+        return interaction.reply({ content: 'Event not found or already deleted.', ephemeral: true });
       }
 
       try {
         const channel = await client.channels.fetch(row.channel_id);
         const message = await channel.messages.fetch(messageId);
-        await message.delete();
+        await message.delete().catch(() => {});
 
         db.run(`DELETE FROM events WHERE message_id = ?`, [messageId]);
         db.run(`DELETE FROM signups WHERE message_id = ?`, [messageId]);
 
-        await interaction.reply({ content: `Evento ${messageId} eliminado correctamente.`, ephemeral: true });
+        await interaction.reply({ content: `Event with ID ${messageId} deleted successfully.`, ephemeral: true });
       } catch (e) {
-        await interaction.reply({ content: 'No se pudo eliminar el mensaje (quizás ya fue borrado).', ephemeral: true });
+        await interaction.reply({ content: 'Could not delete the message (maybe already deleted).', ephemeral: true });
       }
     });
   }
 
-  // Recordatorio cada 30 segundos
+  // Reminder checker (every 30 seconds)
   setInterval(() => {
     const now = new Date().toISOString();
 
     db.all(`SELECT * FROM events WHERE reminder_sent = 0`, (err, rows) => {
-      if (err) return;
+      if (err) return console.error('Reminder query error:', err);
 
       for (const ev of rows) {
-        if (now >= new Date(ev.event_time).toISOString()) {
-          // Ya pasó → no enviamos recordatorio
-          continue;
-        }
-
-        const reminderTime = new Date(ev.event_time);
+        const eventTime = new Date(ev.event_time);
+        const reminderTime = new Date(eventTime);
         reminderTime.setMinutes(reminderTime.getMinutes() - 15);
 
-        if (now >= reminderTime.toISOString()) {
+        if (new Date() >= reminderTime && new Date() < eventTime) {
           client.channels.fetch(ev.channel_id)
             .then(channel => channel.messages.fetch(ev.message_id))
             .then(async msg => {
-              const thread = await msg.startThread({ name: `Evento: ${ev.event_name}` });
-              await thread.send(`@everyone **Recordatorio!** El evento **${ev.event_name}** comienza en 15 minutos!`);
-
+              const thread = await msg.startThread({ name: `Event: ${ev.event_name}` }).catch(() => null);
+              if (thread) {
+                await thread.send(`@everyone **Reminder!** The event **${ev.event_name}** starts in 15 minutes!`).catch(console.error);
+              }
               db.run(`UPDATE events SET reminder_sent = 1 WHERE message_id = ?`, [ev.message_id]);
             })
-            .catch(() => {});
+            .catch(console.error);
         }
       }
     });
