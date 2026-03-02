@@ -76,7 +76,20 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('timeline')
-    .setDescription('Select sheet and update timeline')
+    .setDescription('Select sheet and update timeline'),
+
+  new SlashCommandBuilder()
+    .setName('create_event')
+    .setDescription('Crear un evento personalizado'),
+
+  new SlashCommandBuilder()
+    .setName('delete_event')
+    .setDescription('Eliminar un evento (solo administradores)')
+    .addStringOption(option => 
+      option.setName('message_id')
+        .setDescription('ID del mensaje del evento a eliminar')
+        .setRequired(true)
+    )
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -379,6 +392,211 @@ client.on('interactionCreate', async interaction => {
       });
     }
   }
+
+  // ────────────────────────────────────────────────
+  //               NUEVAS FUNCIONALIDADES
+  // ────────────────────────────────────────────────
+
+  const sqlite3 = require('sqlite3').verbose();
+  const db = new sqlite3.Database('custom_events.db');
+
+  db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS events (
+      message_id TEXT PRIMARY KEY,
+      channel_id TEXT,
+      event_name TEXT,
+      event_time TEXT,
+      reminder_sent INTEGER DEFAULT 0
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS signups (
+      message_id TEXT,
+      user_id TEXT,
+      status TEXT CHECK(status IN ('yes','no')),
+      PRIMARY KEY (message_id, user_id)
+    )`);
+  });
+
+  if (interaction.isChatInputCommand() && interaction.commandName === 'create_event') {
+    const modal = new ModalBuilder()
+      .setCustomId('create_event_modal')
+      .setTitle('Crear Evento Personalizado');
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('event_name')
+          .setLabel('Nombre del evento')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('event_date')
+          .setLabel('Fecha (DD-MM-YYYY)')
+          .setPlaceholder('25-12-2025')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('event_time')
+          .setLabel('Hora (HH:MM) UTC')
+          .setPlaceholder('18:00')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+      )
+    );
+
+    await interaction.showModal(modal);
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId === 'create_event_modal') {
+    await interaction.deferReply({ ephemeral: false });
+
+    const eventName = interaction.fields.getTextInputValue('event_name');
+    const dateStr = interaction.fields.getTextInputValue('event_date');
+    const timeStr = interaction.fields.getTextInputValue('event_time');
+
+    let eventDate;
+    try {
+      const [dd, mm, yyyy] = dateStr.split('-').map(Number);
+      const [hh, min] = timeStr.split(':').map(Number);
+      eventDate = new Date(Date.UTC(yyyy, mm-1, dd, hh, min, 0));
+      if (isNaN(eventDate.getTime())) throw new Error();
+    } catch {
+      return interaction.editReply('Formato de fecha/hora inválido. Usa DD-MM-YYYY y HH:MM');
+    }
+
+    const reminderTime = new Date(eventDate);
+    reminderTime.setMinutes(reminderTime.getMinutes() - 15);
+
+    const embed = new EmbedBuilder()
+      .setColor('#7B2CBF')
+      .setTitle(eventName)
+      .setDescription(`${eventDate.toUTCString().split(' GMT')[0]}\n\u200b`)
+      .setFooter({ text: `Kingdom 3558 • UTC • ID: ${interaction.id}` })
+      .setImage('https://media.discordapp.net/attachments/1388282858723999914/1435074927240810597/ChatGPT_Image_3_nov_2025_22_05_09.png?format=webp&quality=lossless')
+      .addFields(
+        { name: '✅ Asistiré (0)', value: '\u200b', inline: true },
+        { name: '❌ No asistiré (0)', value: '\u200b', inline: true }
+      );
+
+    const row = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId('attend_yes')
+          .setLabel('✅')
+          .setStyle('Secondary'),
+        new ButtonBuilder()
+          .setCustomId('attend_no')
+          .setLabel('❌')
+          .setStyle('Secondary')
+      );
+
+    const msg = await interaction.editReply({ embeds: [embed], components: [row] });
+
+    db.run(
+      `INSERT INTO events (message_id, channel_id, event_name, event_time) VALUES (?, ?, ?, ?)`,
+      [msg.id, msg.channelId, eventName, eventDate.toISOString()]
+    );
+  }
+
+  if (interaction.isButton()) {
+    const [action] = interaction.customId.split('_');
+    const status = action === 'attend' ? (interaction.customId.endsWith('yes') ? 'yes' : 'no') : null;
+
+    if (!status) return;
+
+    await interaction.deferUpdate();
+
+    db.run(
+      `INSERT OR REPLACE INTO signups (message_id, user_id, status) VALUES (?, ?, ?)`,
+      [interaction.message.id, interaction.user.id, status],
+      async (err) => {
+        if (err) return console.error(err);
+
+        db.all(
+          `SELECT status, COUNT(*) as count, GROUP_CONCAT(user_id) as users 
+           FROM signups WHERE message_id = ? GROUP BY status`,
+          [interaction.message.id],
+          async (err, rows) => {
+            if (err) return console.error(err);
+
+            const yes = rows.find(r => r.status === 'yes') || { count: 0, users: '' };
+            const no  = rows.find(r => r.status === 'no')  || { count: 0, users: '' };
+
+            const embed = EmbedBuilder.from(interaction.message.embeds[0])
+              .spliceFields(0, 2,
+                { name: `✅ Asistiré (${yes.count})`, value: yes.users ? yes.users.split(',').map(id => `<@${id}>`).join('\n') : '\u200b', inline: true },
+                { name: `❌ No asistiré (${no.count})`, value: no.users ? no.users.split(',').map(id => `<@${id}>`).join('\n') : '\u200b', inline: true }
+              );
+
+            await interaction.editReply({ embeds: [embed] });
+          }
+        );
+      }
+    );
+  }
+
+  if (interaction.isChatInputCommand() && interaction.commandName === 'delete_event') {
+    if (!interaction.member.permissions.has('Administrator')) {
+      return interaction.reply({ content: 'Solo administradores pueden usar este comando.', ephemeral: true });
+    }
+
+    const messageId = interaction.options.getString('message_id');
+
+    db.get(`SELECT channel_id FROM events WHERE message_id = ?`, [messageId], async (err, row) => {
+      if (err || !row) {
+        return interaction.reply({ content: 'Evento no encontrado o ya eliminado.', ephemeral: true });
+      }
+
+      try {
+        const channel = await client.channels.fetch(row.channel_id);
+        const message = await channel.messages.fetch(messageId);
+        await message.delete();
+
+        db.run(`DELETE FROM events WHERE message_id = ?`, [messageId]);
+        db.run(`DELETE FROM signups WHERE message_id = ?`, [messageId]);
+
+        await interaction.reply({ content: `Evento ${messageId} eliminado correctamente.`, ephemeral: true });
+      } catch (e) {
+        await interaction.reply({ content: 'No se pudo eliminar el mensaje (quizás ya fue borrado).', ephemeral: true });
+      }
+    });
+  }
+
+  // Recordatorio cada 30 segundos
+  setInterval(() => {
+    const now = new Date().toISOString();
+
+    db.all(`SELECT * FROM events WHERE reminder_sent = 0`, (err, rows) => {
+      if (err) return;
+
+      for (const ev of rows) {
+        if (now >= new Date(ev.event_time).toISOString()) {
+          // Ya pasó → no enviamos recordatorio
+          continue;
+        }
+
+        const reminderTime = new Date(ev.event_time);
+        reminderTime.setMinutes(reminderTime.getMinutes() - 15);
+
+        if (now >= reminderTime.toISOString()) {
+          client.channels.fetch(ev.channel_id)
+            .then(channel => channel.messages.fetch(ev.message_id))
+            .then(async msg => {
+              const thread = await msg.startThread({ name: `Evento: ${ev.event_name}` });
+              await thread.send(`@everyone **Recordatorio!** El evento **${ev.event_name}** comienza en 15 minutos!`);
+
+              db.run(`UPDATE events SET reminder_sent = 1 WHERE message_id = ?`, [ev.message_id]);
+            })
+            .catch(() => {});
+        }
+      }
+    });
+  }, 30000);
+
 });
 
 client.login(TOKEN);
