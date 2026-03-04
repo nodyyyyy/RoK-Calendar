@@ -24,6 +24,80 @@ const GUILD_ID = process.env.GUILD_ID;
 const API_KEY = process.env.GOOGLE_API_KEY;
 const CALENDAR_ID = process.env.CALENDAR_ID;
 
+/* ===== LIVE EVENTS SYSTEM ===== */
+
+let liveEventMessages = [];
+
+async function buildLiveEventsEmbed() {
+
+  const now = new Date();
+  const todayUTC = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate()
+  ));
+
+  const day = todayUTC.getUTCDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+
+  const startOfWeek = new Date(todayUTC);
+  startOfWeek.setUTCDate(todayUTC.getUTCDate() + diffToMonday);
+
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 7);
+
+  const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events?key=${API_KEY}&timeMin=${startOfWeek.toISOString()}&timeMax=${endOfWeek.toISOString()}&singleEvents=true&orderBy=startTime`;
+
+  const response = await axios.get(url);
+  const events = response.data.items;
+
+  const embed = new EmbedBuilder()
+    .setColor("#7B2CBF")
+    .setTitle("📅 Current Week Events")
+    .setFooter({ text: "Kingdom 3558 • UTC • Auto Updating" })
+    .setTimestamp();
+
+  events.forEach(event => {
+
+    let start = new Date(event.start.dateTime || event.start.date);
+
+    const startUTC = new Date(Date.UTC(
+      start.getUTCFullYear(),
+      start.getUTCMonth(),
+      start.getUTCDate()
+    ));
+
+    const diffDays = Math.round(
+      (startUTC - todayUTC) / (1000 * 60 * 60 * 24)
+    );
+
+    let relativeText = "";
+
+    if (diffDays > 0) {
+      relativeText = `Arrives in ${diffDays} day${diffDays > 1 ? "s" : ""}`;
+    } else if (diffDays === 0) {
+      relativeText = "Starts today";
+    } else {
+      relativeText = "Already started";
+    }
+
+    const emoji = getEventEmoji(event.summary);
+
+    embed.addFields({
+      name: `${emoji} ${event.summary}`,
+      value:
+`➤ ${relativeText}
+📆 ${startUTC.toDateString()}`,
+      inline: false
+    });
+
+  });
+
+  return embed;
+}
+
+/* ===== END LIVE EVENTS SYSTEM ===== */
+
 /* ---------------- SPREADSHEETS CONFIG ---------------- */
 
 const SPREADSHEETS = {
@@ -91,7 +165,12 @@ const commands = [
       option.setName('message_id')
         .setDescription('ID del mensaje del evento a eliminar')
         .setRequired(true)
-    )
+    ),
+  
+  new SlashCommandBuilder()
+  .setName('live_events')
+  .setDescription('Send an auto-updating weekly events calendar'),
+  
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -133,6 +212,35 @@ function getEventEmoji(eventName) {
 /* ---------------- INTERACTIONS ---------------- */
 
 client.on('interactionCreate', async interaction => {
+
+  /* ===== LIVE EVENTS COMMAND ===== */
+
+if (interaction.isChatInputCommand() && interaction.commandName === 'live_events') {
+
+  await interaction.deferReply();
+
+  try {
+
+    const embed = await buildLiveEventsEmbed();
+
+    const msg = await interaction.editReply({
+      embeds: [embed]
+    });
+
+    liveEventMessages.push({
+      channelId: msg.channel.id,
+      messageId: msg.id
+    });
+
+  } catch (err) {
+    console.error(err);
+    interaction.editReply("❌ Error creating live events embed.");
+  }
+
+  return;
+}
+
+/* ===== END LIVE EVENTS COMMAND ===== */
 
   /* -------- TIMELINE -------- */
 
@@ -603,5 +711,34 @@ client.on('interactionCreate', async interaction => {
   }, 30000);
 
 });
+
+/* ===== LIVE EVENTS AUTO UPDATE ===== */
+
+setInterval(async () => {
+
+  if (liveEventMessages.length === 0) return;
+
+  console.log("🔄 Updating live event embeds...");
+
+  for (const item of liveEventMessages) {
+
+    try {
+
+      const channel = await client.channels.fetch(item.channelId);
+      const message = await channel.messages.fetch(item.messageId);
+
+      const embed = await buildLiveEventsEmbed();
+
+      await message.edit({ embeds: [embed] });
+
+    } catch (err) {
+      console.error("Live events update failed:", err.message);
+    }
+
+  }
+
+}, 3600000);
+
+/* ===== END LIVE EVENTS AUTO UPDATE ===== */
 
 client.login(TOKEN);
