@@ -60,12 +60,40 @@ async function buildLiveEventsEmbed() {
   events.forEach(event => {
 
     let start = new Date(event.start.dateTime || event.start.date);
+    let end = new Date(event.end.dateTime || event.end.date);
+
+    if (event.start.date && event.end.date) {
+      end.setUTCDate(end.getUTCDate() - 1);
+    }
 
     const startUTC = new Date(Date.UTC(
       start.getUTCFullYear(),
       start.getUTCMonth(),
       start.getUTCDate()
     ));
+
+    const endUTC = new Date(Date.UTC(
+      end.getUTCFullYear(),
+      end.getUTCMonth(),
+      end.getUTCDate()
+    ));
+
+    if (endUTC < todayUTC) return;
+
+    const dateFormatter = new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      day: "numeric",
+      timeZone: "UTC",
+    });
+
+    const startDate = dateFormatter.format(startUTC);
+    const endDate = dateFormatter.format(endUTC);
+
+    let durationDays = Math.round(
+      (endUTC - startUTC) / (1000 * 60 * 60 * 24)
+    ) + 1;
+
+    if (durationDays <= 0) durationDays = 1;
 
     const diffDays = Math.round(
       (startUTC - todayUTC) / (1000 * 60 * 60 * 24)
@@ -75,9 +103,11 @@ async function buildLiveEventsEmbed() {
 
     if (diffDays > 0) {
       relativeText = `Arrives in ${diffDays} day${diffDays > 1 ? "s" : ""}`;
-    } else if (diffDays === 0) {
+    } 
+    else if (diffDays === 0) {
       relativeText = "Starts today";
-    } else {
+    } 
+    else {
       relativeText = "Already started";
     }
 
@@ -87,7 +117,10 @@ async function buildLiveEventsEmbed() {
       name: `${emoji} ${event.summary}`,
       value:
 `➤ ${relativeText}
-📆 ${startUTC.toDateString()}`,
+📆 ${startDate} → ${endDate}
+⏳ Event Duration: ${durationDays} day${durationDays > 1 ? "s" : ""}
+
+━━━━━━━━━━━━━━━━━━`,
       inline: false
     });
 
