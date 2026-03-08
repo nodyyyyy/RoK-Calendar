@@ -128,7 +128,7 @@ let end   = new Date(event.end.dateTime   || event.end.date);
 
 ┣ 📆  ${dateFormatter.format(startUTC)}  →  ${dateFormatter.format(endUTC)}
 ┗ ⏳  ${durationDays} day${durationDays > 1 ? “s” : “”}
-​`,
+`,
 inline: false
 });
 added++;
